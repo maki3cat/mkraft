@@ -168,7 +168,7 @@ func (node *Node) RunAsFollower(ctx context.Context) {
 	sugarLogger.Info("acquired semaphore in FOLLOWER state")
 	defer node.sem.Release(1)
 
-	electionTicker := time.NewTicker(util.GetConfig().GetRPCRequestTimeout())
+	electionTicker := time.NewTicker(util.GetConfig().GetElectionTimeout())
 	defer electionTicker.Stop()
 
 	for {

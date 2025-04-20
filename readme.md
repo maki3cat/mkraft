@@ -8,11 +8,22 @@ https://raft.github.io/
 ## External Frameworks/Dependencies
 - gRPC
 
+
+## Bug List
+- [ ]when running server-1, the rpc send doesn't get connection refused error -> not logged?
+- [ ]cancel func deffered before assigned, probably the reason to panic;
+- [ ]server get the request, no one handles it;
+
+
 ## TODO List
 
+### Week April 19-30 2025
+
+- [ ] fix the bug list
+
 ### Week April 13-19 2025
-- [ ] fix all todos and summarize into go-gymnastics
-- [ ] make the first version of leaderselection runnable and playable
+- [x] fix all todos and summarize into go-gymnastics (30%)
+- [x] make the first version of leaderselection runnable and playable (30%)
 
 ### Week April 7-12 2025 (All Done)
 - [x] current rpc layers are unncessarily complicated, design what are really needed for appendEntries/heartbeat in consensus, the two are different (record designs)

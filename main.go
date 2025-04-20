@@ -20,36 +20,36 @@ import (
 
 var logger = util.GetSugarLogger()
 
-func PingMembers(ctx context.Context) {
-	members, err := raft.GetAllPeerClients()
-	if err != nil {
-		logger.Fatal("error in getting all peer clients", err)
-	}
-	ticker := time.NewTicker(time.Second * time.Duration(10))
-	defer ticker.Stop()
-	name := raft.GetCurrentNodeID()
-	logger.Infof("start pinging members: %v", members)
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("context canceled, stopping pinging members...")
-			return
-		case <-ticker.C:
-			logger.Debug("issue hello to all members")
-			for _, memberCli := range members {
-				logger.Debugw("member clients", "memberCli", memberCli)
-				resp, err := memberCli.SayHello(context.Background(), &pb.HelloRequest{
-					Name: "this is " + name,
-				})
-				if err != nil {
-					logger.Infow("error in sending hello to member", "member", memberCli, "error", err)
-				} else {
-					logger.Debugw("hello response from member", "response", resp)
-				}
-			}
-		}
-	}
-}
+// func PingMembers(ctx context.Context) {
+// 	members, err := raft.GetAllPeerClients()
+// 	if err != nil {
+// 		logger.Fatal("error in getting all peer clients", err)
+// 	}
+// 	ticker := time.NewTicker(time.Second * time.Duration(10))
+// 	defer ticker.Stop()
+// 	name := raft.GetCurrentNodeID()
+// 	logger.Infof("start pinging members: %v", members)
+// 	for {
+// 		select {
+// 		case <-ctx.Done():
+// 			logger.Info("context canceled, stopping pinging members...")
+// 			return
+// 		case <-ticker.C:
+// 			logger.Debug("issue hello to all members")
+// 			for _, memberCli := range members {
+// 				logger.Debugw("member clients", "memberCli", memberCli)
+// 				resp, err := memberCli.SayHello(context.Background(), &pb.HelloRequest{
+// 					Name: "this is " + name,
+// 				})
+// 				if err != nil {
+// 					logger.Infow("error in sending hello to member", "member", memberCli, "error", err)
+// 				} else {
+// 					logger.Debugw("hello response from member", "response", resp)
+// 				}
+// 			}
+// 		}
+// 	}
+// }
 
 // maki: gogymnastics pattern serving and gracefully shutdown
 func startRPCServer(ctx context.Context, port int) {
@@ -115,7 +115,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	startRPCServer(ctx, membershipConfig.CurrentPort)
-	go PingMembers(ctx)
+	// go PingMembers(ctx)
 
 	raft.StartRaftNode(ctx)
 
