@@ -66,13 +66,16 @@ func (rc *InternalClientImpl) SendRequestVote(ctx context.Context, req *RequestV
 	func() {
 		retryTicker := time.NewTicker(time.Millisecond * util.RPC_REUQEST_TIMEOUT_IN_MS)
 		defer retryTicker.Stop()
-
-		var singleResChan chan RPCRespWrapper[*RequestVoteResponse]
+		singleResChan := make(chan RPCRespWrapper[*RequestVoteResponse], 1)
 		callRPC := func() {
+			singleResChan = make(chan RPCRespWrapper[*RequestVoteResponse])
 			singleCallCtx, singleCallCancel := context.WithTimeout(ctx, time.Millisecond*(util.RPC_REUQEST_TIMEOUT_IN_MS-10))
 			defer singleCallCancel()
 			// todo: make sure the synchronous call will consume the ctx timeout in someway
 			response, err := rc.rawClient.RequestVote(singleCallCtx, req)
+			if err != nil {
+				logger.Errorw("error in sending request vote", "member", rc.rawClient, "error", err)
+			}
 			wrapper := RPCRespWrapper[*RequestVoteResponse]{
 				Resp: response,
 				Err:  err,

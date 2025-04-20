@@ -75,6 +75,7 @@ func RequestVoteSendForConsensus(ctx context.Context, request *rpc.RequestVoteRe
 		select {
 		case res := <-resChan:
 			if err := res.Err; err != nil {
+				// urgentbug: this is not run
 				sugarLogger.Errorf("error in sending request vote to one node: %v", err)
 				continue
 			} else {

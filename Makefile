@@ -1,4 +1,8 @@
-default:
+
+
+all: build test
+
+test:
 	@go test -v ./...
 
 run:
