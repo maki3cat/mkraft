@@ -265,6 +265,10 @@ func (node *Node) RunAsCandidate(ctx context.Context) {
 	ticker := time.NewTicker(util.GetConfig().GetElectionTimeout())
 	for {
 		select {
+		case <-ctx.Done():
+			sugarLogger.Warn("raft node main context done")
+			memberMgr.GracefulShutdown()
+			return
 		case response := <-consensusChan: // some response from last election
 			// I don't think we need to reset the ticker here
 			voteCancel() // cancel the rest
@@ -394,9 +398,8 @@ func (node *Node) RunAsLeader(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done():
-				// todo:
-				// what if the responseChan is not empty?
-				sugarLogger.Info("context done")
+				sugarLogger.Warn("raft node main context done")
+				memberMgr.GracefulShutdown()
 				return
 			case response := <-appendEntriesRespChan:
 				// BATCHING, BATCHING takes all in buffer now, we'll see if we need a batch-size config
@@ -440,12 +443,10 @@ func (node *Node) RunAsLeader(ctx context.Context) {
 
 	for {
 		select {
-
 		case <-ctx.Done():
-			sugarLogger.Warn("context done, closing up")
-			// todo: do I need to call responseCancel or the cancel just propagates?
+			sugarLogger.Warn("raft node main context done")
+			memberMgr.GracefulShutdown()
 			return
-
 		case newTerm := <-leaderRecedeToFollowerChan:
 			// shall clean up other channels, specially the channel of client request
 			// paper: if a leader receives a heartbeat from a node with a higher term,

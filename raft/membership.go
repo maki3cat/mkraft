@@ -50,6 +50,7 @@ type MembershipMgrIface interface {
 	GetMemberCount() int
 	GetAllPeerClients() ([]rpc.InternalClientIface, error)
 	Warmup()
+	GracefulShutdown()
 }
 
 type Membership struct {

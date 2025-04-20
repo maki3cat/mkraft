@@ -120,8 +120,8 @@ func main() {
 	raft.StartRaftNode(ctx)
 
 	sig := <-signalChan
-	logger.Info("\nReceived signal: %s\n", sig)
-	cancel() // Cancel the context to stop the server gracefully
+	logger.Warn("\nReceived signal: %s\n", sig)
+	cancel()
 	time.Sleep(2 * time.Second)
-	logger.Info("Main exiting")
+	logger.Warn("Main exiting")
 }
