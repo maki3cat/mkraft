@@ -18,39 +18,38 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// THE RPC SERVER, which is different from the RAFT SERVER
-// server interface
-// shall be implemented by a grpc server and try to make an abstract interface
-type RPCServerIface interface {
-	SendRequestVote(request pb.RequestVoteRequest) pb.RequestVoteResponse
-	SendAppendEntries(request pb.AppendEntriesRequest) pb.AppendEntriesResponse
-}
-
-/*
- *
- * Copyright 2015 gRPC authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- */
-
-// Package main implements a server for Greeter service.
-// server is used to implement helloworld.GreeterServer.
-type server struct {
-	pb.UnimplementedRaftServiceServer
-}
-
 var logger = util.GetSugarLogger()
+
+func PingMembers(ctx context.Context) {
+	members, err := raft.GetAllPeerClients()
+	if err != nil {
+		logger.Fatal("error in getting all peer clients", err)
+	}
+	ticker := time.NewTicker(time.Second * time.Duration(10))
+	defer ticker.Stop()
+	name := raft.GetCurrentNodeID()
+	logger.Infof("start pinging members: %v", members)
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("context canceled, stopping pinging members...")
+			return
+		case <-ticker.C:
+			logger.Debug("issue hello to all members")
+			for _, memberCli := range members {
+				logger.Debugw("member clients", "memberCli", memberCli)
+				resp, err := memberCli.SayHello(context.Background(), &pb.HelloRequest{
+					Name: "this is " + name,
+				})
+				if err != nil {
+					logger.Infow("error in sending hello to member", "member", memberCli, "error", err)
+				} else {
+					logger.Debugw("hello response from member", "response", resp)
+				}
+			}
+		}
+	}
+}
 
 // maki: gogymnastics pattern serving and gracefully shutdown
 func startRPCServer(ctx context.Context, port int) {
@@ -60,11 +59,10 @@ func startRPCServer(ctx context.Context, port int) {
 	}
 
 	s := grpc.NewServer()
-	pb.RegisterRaftServiceServer(s, &server{})
-	logger.Infof("server listening at %v", lis.Addr())
+	pb.RegisterRaftServiceServer(s, &Server{})
 
 	go func() {
-		logger.Info("starting gRPC server...")
+		logger.Infof("serving gRPC at %v...", port)
 		if err := s.Serve(lis); err != nil {
 			if errors.Is(err, grpc.ErrServerStopped) {
 				logger.Info("gRPC server stopped")
@@ -117,6 +115,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	startRPCServer(ctx, membershipConfig.CurrentPort)
+	go PingMembers(ctx)
+
 	raft.StartRaftNode(ctx)
 
 	sig := <-signalChan

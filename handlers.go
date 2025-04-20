@@ -10,14 +10,18 @@ import (
 	"github.com/maki3cat/mkraft/util"
 )
 
-func (s *server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
+type Server struct {
+	pb.UnimplementedRaftServiceServer
+}
+
+func (s *Server) SayHello(_ context.Context, in *pb.HelloRequest) (*pb.HelloReply, error) {
 	logger.Infof("Received: %v", in)
 	return &pb.HelloReply{Message: "Hello " + in.GetName()}, nil
 }
 
 // timeout handling guideline: https://grpc.io/docs/guides/deadlines/
-func (s *server) RequestVote(_ context.Context, in *pb.RequestVoteRequest) (*pb.RequestVoteResponse, error) {
-	logger.Infof("Received: %v", in)
+func (s *Server) RequestVote(_ context.Context, in *pb.RequestVoteRequest) (*pb.RequestVoteResponse, error) {
+	logger.Infof("RequestVote received: %v", in)
 	respChan := make(chan *pb.RPCRespWrapper[*pb.RequestVoteResponse], 1)
 	internalReq := &raft.RequestVoteInternal{
 		Request:    in,
@@ -45,7 +49,7 @@ func (s *server) RequestVote(_ context.Context, in *pb.RequestVoteRequest) (*pb.
 	}
 }
 
-func (s *server) AppendEntries(_ context.Context, in *pb.AppendEntriesRequest) (*pb.AppendEntriesResponse, error) {
+func (s *Server) AppendEntries(_ context.Context, in *pb.AppendEntriesRequest) (*pb.AppendEntriesResponse, error) {
 	logger.Infof("Received: %v", in)
 	return &pb.AppendEntriesResponse{Term: 1, Success: true}, nil
 }

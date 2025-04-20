@@ -19,6 +19,8 @@ import (
 	util "github.com/maki3cat/mkraft/util"
 )
 
+var logger = util.GetSugarLogger()
+
 type RPCRespWrapper[T RPCResponse] struct {
 	Err  error
 	Resp T
@@ -32,21 +34,34 @@ type RPCResponse interface {
 type InternalClientIface interface {
 	SendRequestVote(ctx context.Context, req *RequestVoteRequest) chan RPCRespWrapper[*RequestVoteResponse]
 	SendAppendEntries(ctx context.Context, req *AppendEntriesRequest) RPCRespWrapper[*AppendEntriesResponse]
+	SayHello(ctx context.Context, req *HelloRequest) (*HelloReply, error)
+	String() string
 }
 
 type InternalClientImpl struct {
+	name      string
 	rawClient RaftServiceClient
 }
 
 func NewInternalClient(raftServiceClient RaftServiceClient) InternalClientIface {
 	return &InternalClientImpl{
+		name:      "InternalClientImpl",
 		rawClient: raftServiceClient,
 	}
+}
+
+func (rc *InternalClientImpl) String() string {
+	return fmt.Sprintf("%s", rc.name)
+}
+
+func (rc *InternalClientImpl) SayHello(ctx context.Context, req *HelloRequest) (*HelloReply, error) {
+	return rc.rawClient.SayHello(ctx, req)
 }
 
 // should call this with goroutine
 // the parent shall control the timeout of the election
 func (rc *InternalClientImpl) SendRequestVote(ctx context.Context, req *RequestVoteRequest) chan RPCRespWrapper[*RequestVoteResponse] {
+	logger.Debugw("send request vote", "req", req)
 	out := make(chan RPCRespWrapper[*RequestVoteResponse], 1)
 	func() {
 		retryTicker := time.NewTicker(time.Millisecond * util.RPC_REUQEST_TIMEOUT_IN_MS)
@@ -69,13 +84,12 @@ func (rc *InternalClientImpl) SendRequestVote(ctx context.Context, req *RequestV
 		for {
 			select {
 			case <-ctx.Done():
-				// will propagate to the child context as well
-				out <- RPCRespWrapper[*RequestVoteResponse]{Err: fmt.Errorf("context done without a response")}
+				out <- RPCRespWrapper[*RequestVoteResponse]{
+					Err: fmt.Errorf("SendRequestVote context done before getting a response")}
 				return
 			case <-retryTicker.C:
 				callRPC()
-			case response := <-singleResChan:
-				out <- response
+			case out <- <-singleResChan:
 				return
 			}
 		}

@@ -1,0 +1,6 @@
+current_node_id: node0
+current_port: 18079
+current_node_addr: localhost:18079
+all_members:
+  - node_id: node1
+    node_uri: localhost:18079

@@ -28,6 +28,8 @@ type MajorityRequestVoteResp struct {
 // CONSENSUS MODULE
 // todo: currently the result channel only retruns when there is win/fail for sure
 func RequestVoteSendForConsensus(ctx context.Context, request *rpc.RequestVoteRequest, resultChannel chan *MajorityRequestVoteResp) {
+	logger := util.GetSugarLogger()
+	logger.Debugw("RequestVoteSendForConsensus", "request", request)
 
 	// maki: patten, the majority doesn't fail is not fail
 	// todo: this is not the right solution, we should just use the clients left as long as they reach the majority
@@ -40,6 +42,11 @@ func RequestVoteSendForConsensus(ctx context.Context, request *rpc.RequestVoteRe
 		return
 	}
 
+	// URGENTbug
+	// todo: 1) the connection is refused;
+	// todo: 2) the grpc connection is lazy;
+	// todo: the original ctx has problem that it is Done immediately
+
 	memberCount := memberMgr.GetMemberCount()
 	resChan := make(chan rpc.RPCRespWrapper[*rpc.RequestVoteResponse], memberCount) // buffered with len(members) to prevent goroutine leak
 	for _, member := range memberClients {
@@ -47,7 +54,10 @@ func RequestVoteSendForConsensus(ctx context.Context, request *rpc.RequestVoteRe
 		// maki: todo topic for go gynastics
 		go func() {
 			memberHandle := member
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, util.GetConfig().GetElectionTimeout())
+			logger.Debugw("fan out to request vote", "member", memberHandle)
+			timeout := util.GetConfig().GetElectionTimeout()
+			util.GetSugarLogger().Debugw("send request vote", "timeout", timeout)
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 			// FAN-IN
 			resChan <- <-memberHandle.SendRequestVote(ctxWithTimeout, request)
@@ -65,7 +75,7 @@ func RequestVoteSendForConsensus(ctx context.Context, request *rpc.RequestVoteRe
 		select {
 		case res := <-resChan:
 			if err := res.Err; err != nil {
-				sugarLogger.Error("error in sending request vote to one node", err)
+				sugarLogger.Errorf("error in sending request vote to one node: %v", err)
 				continue
 			} else {
 				resp := res.Resp

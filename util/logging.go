@@ -8,7 +8,7 @@ var sugarLogger *zap.SugaredLogger
 func InitLogger() {
 	// Initialize the logger
 	var err error
-	logger, err = zap.NewProduction()
+	logger, err = zap.NewDevelopment()
 	if err != nil {
 		panic(err)
 	}

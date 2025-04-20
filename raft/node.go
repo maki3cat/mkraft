@@ -175,8 +175,8 @@ func (node *Node) RunAsFollower(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			sugarLogger.Warn("context done")
+			memberMgr.GracefulShutdown()
 			return
-
 		case <-electionTicker.C:
 			node.State = StateCandidate
 			go node.RunAsCandidate(ctx)
