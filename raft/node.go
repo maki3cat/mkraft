@@ -233,9 +233,9 @@ func (node *Node) RunAsCandidate(ctx context.Context) {
 		panic("node is not in CANDIDATE state")
 	}
 
-	sugarLogger.Info("node acquires to run in CANDIDATE state")
+	sugarLogger.Info("node starts to acquiring CANDIDATE state")
 	node.sem.Acquire(ctx, 1)
-	sugarLogger.Info("acquired semaphore in CANDIDATE state")
+	sugarLogger.Info("node has acquired semaphore in CANDIDATE state")
 	defer node.sem.Release(1)
 
 	var consensusChan chan *MajorityRequestVoteResp
