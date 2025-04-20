@@ -13,8 +13,19 @@ var (
 	once      sync.Once
 )
 
-func InitGlobalMembershipManager(staticMembership *Membership) {
+func InitGlobalMembershipWithStaticConfig(staticMembership *Membership) {
 	once.Do(func() {
+		// check sanity
+		if staticMembership.AllMembers == nil || len(staticMembership.AllMembers) == 0 {
+			util.GetSugarLogger().Fatal("static membership is empty")
+		}
+		for _, node := range staticMembership.AllMembers {
+			if node.NodeID == "" || node.NodeURI == "" {
+				util.GetSugarLogger().Fatal("static membership is invalid")
+			}
+		}
+
+		// init
 		util.GetSugarLogger().Info("Initializing static membership manager")
 		staticMembershipMgr := &StaticMembershipMgr{
 			membership:    staticMembership,
@@ -47,8 +58,8 @@ type Membership struct {
 }
 
 type NodeAddr struct {
-	NodeID  string `json:"node_id"`
-	NodeURI string `json:"node_uri"`
+	NodeID  string `json:"node_id" yaml:"node_id"`
+	NodeURI string `json:"node_uri" yaml:"node_uri"`
 }
 
 type StaticMembershipMgr struct {

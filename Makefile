@@ -3,7 +3,7 @@ default:
 
 run:
 	@echo "Running the main program..."
-	@go run main.go
+	@go run main.go -c local/config1.yaml
 
 protogen:
 	@protoc --go_out=. --go-grpc_out=. proto/mkraft/service.proto

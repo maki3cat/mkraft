@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
