@@ -1,4 +1,4 @@
-package rpc
+package mkraft
 
 import (
 	"context"
@@ -12,28 +12,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/maki3cat/mkraft/common"
+	"github.com/maki3cat/mkraft/rpc"
 )
 
 var _ InternalClientIface = (*InternalClientImpl)(nil)
 
-type RPCRespWrapper[T RPCResponse] struct {
-	Err  error
-	Resp T
-}
-
-type RPCResponse interface {
-	*AppendEntriesResponse | *RequestVoteResponse
-}
-
 type InternalClientIface interface {
 
 	// send request vote is keep retrying until the context is done or the response is received
-	SendRequestVoteWithRetries(ctx context.Context, req *RequestVoteRequest) chan RPCRespWrapper[*RequestVoteResponse]
+	SendRequestVoteWithRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan RPCRespWrapper[*rpc.RequestVoteResponse]
 
 	// send append entries is one simple sync rpc call with rpc timeout
-	SendAppendEntries(ctx context.Context, req *AppendEntriesRequest) RPCRespWrapper[*AppendEntriesResponse]
+	SendAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) RPCRespWrapper[*rpc.AppendEntriesResponse]
 
-	SayHello(ctx context.Context, req *HelloRequest) (*HelloReply, error)
+	SayHello(ctx context.Context, req *rpc.HelloRequest) (*rpc.HelloReply, error)
 
 	String() string
 
@@ -43,7 +35,7 @@ type InternalClientIface interface {
 type InternalClientImpl struct {
 	nodeId    string
 	nodeAddr  string
-	rawClient RaftServiceClient
+	rawClient rpc.RaftServiceClient
 	conn      *grpc.ClientConn
 	logger    *zap.Logger
 	cfg       common.ConfigIface
@@ -71,7 +63,7 @@ func NewInternalClient(
 		logger.Error("failed to create gRPC connection", zap.String("nodeID", nodeID), zap.String("nodeAddr", nodeAddr), zap.Error(err))
 		return nil, err
 	}
-	client.rawClient = NewRaftServiceClient(conn)
+	client.rawClient = rpc.NewRaftServiceClient(conn)
 	return client, nil
 }
 
@@ -91,13 +83,13 @@ func (rc *InternalClientImpl) String() string {
 	return fmt.Sprintf("InternalClientImpl: %s, %s", rc.nodeId, rc.nodeAddr)
 }
 
-func (rc *InternalClientImpl) SayHello(ctx context.Context, req *HelloRequest) (*HelloReply, error) {
+func (rc *InternalClientImpl) SayHello(ctx context.Context, req *rpc.HelloRequest) (*rpc.HelloReply, error) {
 	return rc.rawClient.SayHello(ctx, req)
 }
 
-func (rc *InternalClientImpl) SendAppendEntries(ctx context.Context, req *AppendEntriesRequest) RPCRespWrapper[*AppendEntriesResponse] {
+func (rc *InternalClientImpl) SendAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) RPCRespWrapper[*rpc.AppendEntriesResponse] {
 	resp, err := rc.syncCallAppendEntries(ctx, req)
-	wrapper := RPCRespWrapper[*AppendEntriesResponse]{
+	wrapper := RPCRespWrapper[*rpc.AppendEntriesResponse]{
 		Resp: resp,
 		Err:  err,
 	}
@@ -105,27 +97,27 @@ func (rc *InternalClientImpl) SendAppendEntries(ctx context.Context, req *Append
 }
 
 // the context shall be timed out in election timeout period
-func (rc *InternalClientImpl) SendRequestVoteWithRetries(ctx context.Context, req *RequestVoteRequest) chan RPCRespWrapper[*RequestVoteResponse] {
+func (rc *InternalClientImpl) SendRequestVoteWithRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan RPCRespWrapper[*rpc.RequestVoteResponse] {
 	requestID := common.GetRequestID(ctx)
 	rc.logger.Debug("send SendRequestVote",
 		zap.String("to", rc.String()),
 		zap.Any("request", req),
 		zap.String("requestID", requestID))
-	out := make(chan RPCRespWrapper[*RequestVoteResponse], 1)
+	out := make(chan RPCRespWrapper[*rpc.RequestVoteResponse], 1)
 
 	retriedRPC := func() {
 		singleResChan := rc.asyncCallRequestVote(ctx, req)
 		for {
 			select {
 			case <-ctx.Done():
-				out <- RPCRespWrapper[*RequestVoteResponse]{
+				out <- RPCRespWrapper[*rpc.RequestVoteResponse]{
 					Err: fmt.Errorf("%s", "election timeout to receive any non-error response")}
 				return
 			case resp := <-singleResChan:
 				if resp.Err != nil {
 					deadline, ok := ctx.Deadline()
 					if ok && time.Until(deadline) < rc.cfg.GetMinRemainingTimeForRPC() {
-						out <- RPCRespWrapper[*RequestVoteResponse]{
+						out <- RPCRespWrapper[*rpc.RequestVoteResponse]{
 							Err: fmt.Errorf("%s", "election timeout to receive any non-error response")}
 						return
 					} else {
@@ -147,11 +139,11 @@ func (rc *InternalClientImpl) SendRequestVoteWithRetries(ctx context.Context, re
 	return out
 }
 
-func (rc *InternalClientImpl) asyncCallRequestVote(ctx context.Context, req *RequestVoteRequest) chan RPCRespWrapper[*RequestVoteResponse] {
-	singleResChan := make(chan RPCRespWrapper[*RequestVoteResponse], 1) // must be buffered
+func (rc *InternalClientImpl) asyncCallRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) chan RPCRespWrapper[*rpc.RequestVoteResponse] {
+	singleResChan := make(chan RPCRespWrapper[*rpc.RequestVoteResponse], 1) // must be buffered
 	go func() {
 		resp, err := rc.syncCallRequestVote(ctx, req)
-		wrapper := RPCRespWrapper[*RequestVoteResponse]{
+		wrapper := RPCRespWrapper[*rpc.RequestVoteResponse]{
 			Resp: resp,
 			Err:  err,
 		}
@@ -161,7 +153,7 @@ func (rc *InternalClientImpl) asyncCallRequestVote(ctx context.Context, req *Req
 }
 
 // should be called when ctx.deadline can handle the rpc timeout
-func (rc *InternalClientImpl) syncCallAppendEntries(ctx context.Context, req *AppendEntriesRequest) (*AppendEntriesResponse, error) {
+func (rc *InternalClientImpl) syncCallAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
 	resp, err := rc.rawClient.AppendEntries(ctx, req)
 	if err != nil {
 		requestID := common.GetRequestID(ctx)
@@ -173,7 +165,7 @@ func (rc *InternalClientImpl) syncCallAppendEntries(ctx context.Context, req *Ap
 }
 
 // should be called when ctx.deadline can handle the rpc timeout
-func (rc *InternalClientImpl) syncCallRequestVote(ctx context.Context, req *RequestVoteRequest) (*RequestVoteResponse, error) {
+func (rc *InternalClientImpl) syncCallRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
 	resp, err := rc.rawClient.RequestVote(ctx, req)
 	if err != nil {
 		requestID := common.GetRequestID(ctx)

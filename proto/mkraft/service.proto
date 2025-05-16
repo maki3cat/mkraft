@@ -9,6 +9,8 @@ service RaftService {
   rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse) {}
 
   rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
+
+  rpc ClientCommand(ClientCommandRequest) returns (ClientCommandResponse) {}
 }
 
 message HelloRequest {
@@ -20,31 +22,40 @@ message HelloReply {
 }
 
 message RequestVoteRequest {
-  int32 term = 1;
+  uint32 term = 1;
   string candidate_id = 2;
-  int32 last_log_index = 3;
-  int32 last_log_term = 4;
+  uint64 last_log_index = 3;
+  uint32 last_log_term = 4;
 }
 
 message RequestVoteResponse {
-  int32 term = 1;
+  uint32 term = 1;
   bool vote_granted = 2;
 }
 
 message AppendEntriesRequest {
-  int32 term = 1;
+  uint32 term = 1;
   string leader_id = 2;
-  int32 prev_log_index = 3;
-  int32 prev_log_term = 4;
+  uint64 prev_log_index = 3;
+  uint32 prev_log_term = 4;
   repeated LogEntry entries = 5;
-  int32 leader_commit = 6;
+  uint32 leader_commit = 6;
 }
 
 message AppendEntriesResponse {
-  int32 term = 1;
+  uint32 term = 1;
   bool success = 2;
 }
 
 message LogEntry {
   bytes data = 1;
+}
+
+message ClientCommandRequest {
+  bytes metadata = 1;
+  bytes command = 2;
+}
+
+message ClientCommandResponse {
+  bytes result = 1;
 }

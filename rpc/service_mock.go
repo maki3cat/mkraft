@@ -61,6 +61,26 @@ func (mr *MockRaftServiceClientMockRecorder) AppendEntries(ctx, in any, opts ...
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEntries", reflect.TypeOf((*MockRaftServiceClient)(nil).AppendEntries), varargs...)
 }
 
+// ClientCommand mocks base method.
+func (m *MockRaftServiceClient) ClientCommand(ctx context.Context, in *ClientCommandRequest, opts ...grpc.CallOption) (*ClientCommandResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ClientCommand", varargs...)
+	ret0, _ := ret[0].(*ClientCommandResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClientCommand indicates an expected call of ClientCommand.
+func (mr *MockRaftServiceClientMockRecorder) ClientCommand(ctx, in any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClientCommand", reflect.TypeOf((*MockRaftServiceClient)(nil).ClientCommand), varargs...)
+}
+
 // RequestVote mocks base method.
 func (m *MockRaftServiceClient) RequestVote(ctx context.Context, in *RequestVoteRequest, opts ...grpc.CallOption) (*RequestVoteResponse, error) {
 	m.ctrl.T.Helper()
@@ -138,6 +158,21 @@ func (m *MockRaftServiceServer) AppendEntries(arg0 context.Context, arg1 *Append
 func (mr *MockRaftServiceServerMockRecorder) AppendEntries(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEntries", reflect.TypeOf((*MockRaftServiceServer)(nil).AppendEntries), arg0, arg1)
+}
+
+// ClientCommand mocks base method.
+func (m *MockRaftServiceServer) ClientCommand(arg0 context.Context, arg1 *ClientCommandRequest) (*ClientCommandResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClientCommand", arg0, arg1)
+	ret0, _ := ret[0].(*ClientCommandResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClientCommand indicates an expected call of ClientCommand.
+func (mr *MockRaftServiceServerMockRecorder) ClientCommand(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClientCommand", reflect.TypeOf((*MockRaftServiceServer)(nil).ClientCommand), arg0, arg1)
 }
 
 // RequestVote mocks base method.

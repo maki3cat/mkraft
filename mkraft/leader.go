@@ -1,4 +1,4 @@
-package raft
+package mkraft
 
 import (
 	"context"
@@ -75,7 +75,7 @@ func (n *Node) RunAsLeader(ctx context.Context) {
 	// (3) common task-1: handle voting requests from other candidates
 	// (4) common task-2: handle append entries requests from other candidates
 
-	n.clientCommandChan = make(chan *ClientCommandInternal, n.cfg.GetRaftNodeRequestBufferSize())
+	n.clientCommandChan = make(chan *ClientCommandInternalReq, n.cfg.GetRaftNodeRequestBufferSize())
 	n.leaderDegradationChan = make(chan TermRank, n.cfg.GetRaftNodeRequestBufferSize())
 
 	// these channels cannot be closed because they are created in the main thread but used in the worker
@@ -102,7 +102,7 @@ func (n *Node) RunAsLeader(ctx context.Context) {
 				return
 			case newTerm := <-n.leaderDegradationChan:
 				n.State = StateFollower
-				n.SetVoteForAndTerm(n.VotedFor, int32(newTerm))
+				n.SetVoteForAndTerm(n.VotedFor, uint32(newTerm))
 				// shall first change the state, so that new client commands won't flood in when we close the channel
 				n.closeClientCommandChan()
 				go n.RunAsFollower(ctx)
@@ -113,12 +113,10 @@ func (n *Node) RunAsLeader(ctx context.Context) {
 					LeaderId: n.NodeId,
 				}
 				go n.callAppendEntries(ctx, heartbeatReq)
-			case clientCmdReq := <-n.clientCommandChan:
-				// todo: the client command request, should go into the callAppendEntries to handle
-				// todo: we omit the client command for now
+			case internalReq := <-n.clientCommandChan:
 				tickerForHeartbeat.Stop()
 				log := &rpc.LogEntry{
-					Data: clientCmdReq.request,
+					Data: internalReq.Req.Command,
 				}
 				appendEntryReq := &rpc.AppendEntriesRequest{
 					Term:     n.CurrentTerm,
@@ -143,30 +141,29 @@ func (n *Node) leaderCommonTaskWorker(ctx context.Context) {
 			case <-ctx.Done():
 				n.logger.Warn("leader's worker context done, exiting")
 				return
-			case requestVote := <-n.requestVoteChan: // commonRule: same with candidate
-				if !requestVote.IsTimeout.Load() {
+			case internalReq := <-n.requestVoteChan: // commonRule: same with candidate
+				if !internalReq.IsTimeout.Load() {
 					// no-IO operation
-					req := requestVote.Request
-					resChan := requestVote.RespWraper
+					req := internalReq.Req
 					resp := n.receiveVoteRequest(req)
-					wrapper := &rpc.RPCRespWrapper[*rpc.RequestVoteResponse]{
+					wrappedResp := &RPCRespWrapper[*rpc.RequestVoteResponse]{
 						Resp: resp,
 						Err:  nil,
 					}
-					resChan <- wrapper
+					internalReq.RespChan <- wrappedResp
 					if resp.VoteGranted {
 						n.leaderDegradationChan <- TermRank(resp.Term)
 						return
 					}
 				}
-			case req := <-n.appendEntryChan: // commonRule: same with candidate
+			case internalReq := <-n.appendEntryChan: // commonRule: same with candidate
 				// todo: shall add appendEntry operations which shall be a goroutine
-				resp := n.receiveAppendEntires(req.Request)
-				wrapper := rpc.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+				resp := n.receiveAppendEntires(internalReq.Req)
+				wrapper := RPCRespWrapper[*rpc.AppendEntriesResponse]{
 					Resp: resp,
 					Err:  nil,
 				}
-				req.RespWraper <- &wrapper
+				internalReq.RespChan <- &wrapper
 				if resp.Success {
 					n.leaderDegradationChan <- TermRank(resp.Term)
 					return
@@ -174,6 +171,63 @@ func (n *Node) leaderCommonTaskWorker(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// todo: shall add batching
+func (n *Node) handleClientCommand(ctx context.Context, internalReq *ClientCommandInternalReq) error {
+
+	if n.State != StateLeader {
+		return errors.New("node is not in LEADER state")
+	}
+
+	// (1) appends the command to the local as a new entry
+	// todo: how to get the response
+	go n.raftLog.AppendLog(internalReq.Req.Command, int(n.CurrentTerm))
+
+	// (2) sends the command of appendEntries to all the followers in parallel to replicate the entry
+	index, term := n.raftLog.GetPrevLogIndexAndTerm()
+	entries := make([]*rpc.LogEntry, 1)
+	entries[0] = &rpc.LogEntry{
+		Data: internalReq.Req.Command,
+	}
+
+	req := &rpc.AppendEntriesRequest{
+		Term:         n.CurrentTerm,
+		LeaderId:     n.NodeId,
+		PrevLogIndex: index,
+		PrevLogTerm:  term,
+		Entries:      entries,
+		LeaderCommit: n.commitIndex,
+	}
+	// todo: how to get the response
+	go n.callAppendEntries(ctx, req)
+
+	// (3) when the entry has been safely replicated, the leader applies the entry to the state machine
+	applyResp, err := n.statemachine.ApplyCommand(internalReq.Req.Command)
+	// todo: how to get the response
+
+	// (4) the leader responds to the client
+	if err != nil {
+		n.logger.Error("error in applying command to state machine", zap.Error(err))
+		internalReq.RespChan <- &RPCRespWrapper[*rpc.ClientCommandResponse]{
+			Resp: nil,
+			Err:  err,
+		}
+	} else {
+		clientResp := &rpc.ClientCommandResponse{
+			Result: applyResp,
+		}
+		internalReq.RespChan <- &RPCRespWrapper[*rpc.ClientCommandResponse]{
+			Resp: clientResp,
+			Err:  nil,
+		}
+	}
+
+	// (5) if the follower run slowly or crash, the leader will retry to send the appendEntries indefinitely
+	// todo: how to do get the slower follower and resend the req?
+
+	// (6)
+	return nil
 }
 
 // synchronous, should be called in a goroutine
@@ -215,7 +269,14 @@ func (n *Node) closeClientCommandChan() {
 	close(n.clientCommandChan)
 	for request := range n.clientCommandChan {
 		if request != nil {
-			request.errChan <- errors.New("raft node is not in leader state")
+			request.RespChan <- &RPCRespWrapper[*rpc.ClientCommandResponse]{
+				Resp: nil,
+				Err:  errors.New("raft node is not in leader state"),
+			}
 		}
 	}
+}
+
+func (n *Node) ClientCommand(req *ClientCommandInternalReq) {
+	n.clientCommandChan <- req
 }

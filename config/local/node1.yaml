@@ -29,3 +29,6 @@ membership:
       node_uri: localhost:18082
     - node_id: node3
       node_uri: localhost:18083
+
+basic_config:
+  raft_log_file_path: /tmp/raft_log1

@@ -1,4 +1,4 @@
-package raft
+package mkraft
 
 import (
 	"context"
@@ -59,22 +59,22 @@ func (n *Node) RunAsFollower(ctx context.Context) {
 					}
 					electionTicker.Stop()
 					// for the follower, the node state has no reason to change because of the request
-					resp := n.receiveVoteRequest(requestVoteInternal.Request)
-					wrapper := &rpc.RPCRespWrapper[*rpc.RequestVoteResponse]{
+					resp := n.receiveVoteRequest(requestVoteInternal.Req)
+					wrappedResp := RPCRespWrapper[*rpc.RequestVoteResponse]{
 						Resp: resp,
 						Err:  nil,
 					}
-					requestVoteInternal.RespWraper <- wrapper
+					requestVoteInternal.RespChan <- &wrappedResp
 					electionTicker.Reset(n.cfg.GetElectionTimeout())
 				case req := <-n.appendEntryChan:
 					electionTicker.Stop()
 					// for the follower, the node state has no reason to change because of the request
-					resp := n.receiveAppendEntires(req.Request)
-					wrappedResp := &rpc.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+					resp := n.receiveAppendEntires(req.Req)
+					wrappedResp := RPCRespWrapper[*rpc.AppendEntriesResponse]{
 						Resp: resp,
 						Err:  nil,
 					}
-					req.RespWraper <- wrappedResp
+					req.RespChan <- &wrappedResp
 					electionTicker.Reset(n.cfg.GetElectionTimeout())
 				}
 			}
@@ -155,14 +155,14 @@ func (n *Node) RunAsCandidate(ctx context.Context) {
 						n.logger.Warn("request vote is timeout")
 						continue
 					}
-					req := requestVoteInternal.Request
-					resChan := requestVoteInternal.RespWraper
+					req := requestVoteInternal.Req
+					resChan := requestVoteInternal.RespChan
 					resp := n.receiveVoteRequest(req)
-					wrapper := &rpc.RPCRespWrapper[*rpc.RequestVoteResponse]{
+					wrappedResp := RPCRespWrapper[*rpc.RequestVoteResponse]{
 						Resp: resp,
 						Err:  nil,
 					}
-					resChan <- wrapper
+					resChan <- &wrappedResp
 					// this means other candiate has a higher term
 					if resp.VoteGranted {
 						n.State = StateFollower
@@ -170,16 +170,16 @@ func (n *Node) RunAsCandidate(ctx context.Context) {
 						return
 					}
 				case req := <-n.appendEntryChan: // commonRule: handling appendEntry from a leader which can be stale or new
-					resp := n.receiveAppendEntires(req.Request)
-					wrappedResp := &rpc.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+					resp := n.receiveAppendEntires(req.Req)
+					wrappedResp := RPCRespWrapper[*rpc.AppendEntriesResponse]{
 						Resp: resp,
 						Err:  nil,
 					}
-					req.RespWraper <- wrappedResp
+					req.RespChan <- &wrappedResp
 					if resp.Success {
 						// this means there is a leader there
 						n.State = StateFollower
-						n.CurrentTerm = req.Request.Term
+						n.CurrentTerm = req.Req.Term
 						go n.RunAsFollower(ctx)
 						return
 					}

@@ -1,4 +1,4 @@
-package raft
+package mkraft
 
 import (
 	"context"
@@ -7,63 +7,17 @@ import (
 	"testing"
 	"time"
 
-	util "github.com/maki3cat/mkraft/common"
+	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/rpc"
 	gomock "go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 )
 
-func TestCalculateIfMajorityMet(t *testing.T) {
-	tests := []struct {
-		total               int
-		peerVoteAccumulated int
-		expected            bool
-	}{
-		{total: 5, peerVoteAccumulated: 3, expected: true},
-		{total: 5, peerVoteAccumulated: 2, expected: true},
-		{total: 5, peerVoteAccumulated: 1, expected: false},
-		{total: 3, peerVoteAccumulated: 2, expected: true},
-		{total: 3, peerVoteAccumulated: 1, expected: true},
-		{total: 3, peerVoteAccumulated: 0, expected: false},
-	}
-
-	for _, test := range tests {
-		result := calculateIfMajorityMet(test.total, test.peerVoteAccumulated)
-		if result != test.expected {
-			t.Errorf("calculateIfMajorityMet(%d, %d) = %v; want %v", test.total, test.peerVoteAccumulated, result, test.expected)
-		}
-	}
-}
-
-func TestCalculateIfAlreadyFail(t *testing.T) {
-	tests := []struct {
-		total               int
-		peersCount          int
-		peerVoteAccumulated int
-		voteFailed          int
-		expected            bool
-	}{
-		{total: 5, peersCount: 3, peerVoteAccumulated: 2, voteFailed: 1, expected: false},
-		{total: 5, peersCount: 3, peerVoteAccumulated: 1, voteFailed: 2, expected: true},
-		{total: 5, peersCount: 4, peerVoteAccumulated: 1, voteFailed: 3, expected: true},
-		{total: 5, peersCount: 4, peerVoteAccumulated: 1, voteFailed: 2, expected: false},
-
-		{total: 3, peersCount: 1, peerVoteAccumulated: 0, voteFailed: 1, expected: true},
-		{total: 3, peersCount: 2, peerVoteAccumulated: 1, voteFailed: 0, expected: false},
-	}
-
-	for _, test := range tests {
-		result := calculateIfAlreadyFail(test.total, test.peersCount, test.peerVoteAccumulated, test.voteFailed)
-		if result != test.expected {
-			t.Errorf("calculateIfAlreadyFail(%d, %d, %d, %d) = %v; want %v", test.total, test.peersCount, test.peerVoteAccumulated, test.voteFailed, result, test.expected)
-		}
-	}
-}
-
 func TestRequestVoteSendForConsensus(t *testing.T) {
+
 	ctrl := gomock.NewController(t)
 
-	mockConfig := util.NewMockConfigIface(ctrl)
+	mockConfig := common.NewMockConfigIface(ctrl)
 	mockConfig.EXPECT().GetElectionTimeout().Return(1000 * time.Millisecond).AnyTimes()
 	mockMemberMgr := NewMockMembershipMgrIface(ctrl)
 
@@ -97,20 +51,19 @@ func TestRequestVoteSendForConsensus(t *testing.T) {
 		{
 			name: "Majority vote granted",
 			mockSetup: func() {
-
-				respChan := make(chan rpc.RPCRespWrapper[*rpc.RequestVoteResponse], 1)
-				respChan <- rpc.RPCRespWrapper[*rpc.RequestVoteResponse]{
+				respChan := make(chan RPCRespWrapper[*rpc.RequestVoteResponse], 1)
+				wrappedResp := RPCRespWrapper[*rpc.RequestVoteResponse]{
 					Err:  nil,
 					Resp: &rpc.RequestVoteResponse{Term: 1, VoteGranted: true},
 				}
-				mockClient1 := rpc.NewMockInternalClientIface(ctrl)
+				respChan <- wrappedResp
+
+				mockClient1 := NewMockInternalClientIface(ctrl)
 				mockClient1.EXPECT().SendRequestVoteWithRetries(
 					gomock.Any(), gomock.Any()).Return(respChan).Times(1)
-
-				peerClients := make([]rpc.InternalClientIface, 1)
+				peerClients := make([]InternalClientIface, 1)
 				peerClients[0] = mockClient1
 				fmt.Printf("%d\n", len(peerClients))
-
 				mockMemberMgr.EXPECT().GetAllPeerClients().Return(peerClients, nil).Times(1)
 				mockMemberMgr.EXPECT().GetMemberCount().Return(3).Times(1)
 			},
@@ -124,16 +77,17 @@ func TestRequestVoteSendForConsensus(t *testing.T) {
 		{
 			name: "Higher term received",
 			mockSetup: func() {
-				respChan := make(chan rpc.RPCRespWrapper[*rpc.RequestVoteResponse], 1)
-				respChan <- rpc.RPCRespWrapper[*rpc.RequestVoteResponse]{
+				respChan := make(chan RPCRespWrapper[*rpc.RequestVoteResponse], 1)
+				wrappedResp := RPCRespWrapper[*rpc.RequestVoteResponse]{
 					Err:  nil,
-					Resp: &rpc.RequestVoteResponse{Term: 2, VoteGranted: false},
+					Resp: &rpc.RequestVoteResponse{Term: 2, VoteGranted: true},
 				}
-				mockClient1 := rpc.NewMockInternalClientIface(ctrl)
+				respChan <- wrappedResp
+				mockClient1 := NewMockInternalClientIface(ctrl)
 				mockClient1.EXPECT().SendRequestVoteWithRetries(
 					gomock.Any(), gomock.Any()).Return(respChan).Times(1)
 
-				peerClients := make([]rpc.InternalClientIface, 1)
+				peerClients := make([]InternalClientIface, 1)
 				peerClients[0] = mockClient1
 				fmt.Printf("%d\n", len(peerClients))
 
@@ -150,16 +104,16 @@ func TestRequestVoteSendForConsensus(t *testing.T) {
 		{
 			name: "Majority failed to respond",
 			mockSetup: func() {
-				respChan := make(chan rpc.RPCRespWrapper[*rpc.RequestVoteResponse], 1)
-				respChan <- rpc.RPCRespWrapper[*rpc.RequestVoteResponse]{
+				respChan := make(chan RPCRespWrapper[*rpc.RequestVoteResponse], 1)
+				respChan <- RPCRespWrapper[*rpc.RequestVoteResponse]{
 					Err:  errors.New("mock error"),
 					Resp: nil,
 				}
-				mockClient1 := rpc.NewMockInternalClientIface(ctrl)
+				mockClient1 := NewMockInternalClientIface(ctrl)
 				mockClient1.EXPECT().SendRequestVoteWithRetries(
 					gomock.Any(), gomock.Any()).Return(respChan).Times(1)
 
-				peerClients := make([]rpc.InternalClientIface, 1)
+				peerClients := make([]InternalClientIface, 1)
 				peerClients[0] = mockClient1
 				fmt.Printf("%d\n", len(peerClients))
 
@@ -173,12 +127,12 @@ func TestRequestVoteSendForConsensus(t *testing.T) {
 		{
 			name: "Context timeout",
 			mockSetup: func() {
-				respChan := make(chan rpc.RPCRespWrapper[*rpc.RequestVoteResponse], 1)
-				mockClient1 := rpc.NewMockInternalClientIface(ctrl)
+				respChan := make(chan RPCRespWrapper[*rpc.RequestVoteResponse], 1)
+				mockClient1 := NewMockInternalClientIface(ctrl)
 				mockClient1.EXPECT().SendRequestVoteWithRetries(
 					gomock.Any(), gomock.Any()).Return(respChan).Times(1)
 
-				peerClients := make([]rpc.InternalClientIface, 1)
+				peerClients := make([]InternalClientIface, 1)
 				peerClients[0] = mockClient1
 				fmt.Printf("%d\n", len(peerClients))
 
@@ -221,7 +175,7 @@ func TestRequestVoteSendForConsensus(t *testing.T) {
 func TestAppendEntriesSendForConsensus(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
-	mockConfig := util.NewMockConfigIface(ctrl)
+	mockConfig := common.NewMockConfigIface(ctrl)
 	mockConfig.EXPECT().GetElectionTimeout().Return(1000 * time.Millisecond).AnyTimes()
 	mockMemberMgr := NewMockMembershipMgrIface(ctrl)
 	logger := zap.NewNop()
@@ -262,7 +216,7 @@ func TestAppendEntriesSendForConsensus(t *testing.T) {
 				mockClient2 := mockSendAppendEntriesError(ctrl)
 				mockClient3 := mockSendAppendEntries(ctrl, term)
 
-				peerClients := []rpc.InternalClientIface{mockClient1, mockClient2, mockClient3}
+				peerClients := []InternalClientIface{mockClient1, mockClient2, mockClient3}
 
 				mockMemberMgr.EXPECT().GetAllPeerClients().Return(peerClients, nil).Times(1)
 				mockMemberMgr.EXPECT().GetMemberCount().Return(5).Times(1)
@@ -299,23 +253,23 @@ func TestAppendEntriesSendForConsensus(t *testing.T) {
 	}
 }
 
-func mockSendAppendEntries(ctrl *gomock.Controller, term int32) *rpc.MockInternalClientIface {
-	rpcWrapper := rpc.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+func mockSendAppendEntries(ctrl *gomock.Controller, term int32) *MockInternalClientIface {
+	rpcWrapper := RPCRespWrapper[*rpc.AppendEntriesResponse]{
 		Err:  nil,
-		Resp: &rpc.AppendEntriesResponse{Term: term, Success: true},
+		Resp: &rpc.AppendEntriesResponse{Term: uint32(term), Success: true},
 	}
-	mockClient1 := rpc.NewMockInternalClientIface(ctrl)
+	mockClient1 := NewMockInternalClientIface(ctrl)
 	mockClient1.EXPECT().SendAppendEntries(
 		gomock.Any(), gomock.Any()).Return(rpcWrapper).Times(1)
 	return mockClient1
 }
 
-func mockSendAppendEntriesError(ctrl *gomock.Controller) *rpc.MockInternalClientIface {
-	rpcWrapper := rpc.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+func mockSendAppendEntriesError(ctrl *gomock.Controller) *MockInternalClientIface {
+	rpcWrapper := RPCRespWrapper[*rpc.AppendEntriesResponse]{
 		Err:  errors.New("mock error"),
 		Resp: nil,
 	}
-	mockClient1 := rpc.NewMockInternalClientIface(ctrl)
+	mockClient1 := NewMockInternalClientIface(ctrl)
 	mockClient1.EXPECT().SendAppendEntries(
 		gomock.Any(), gomock.Any()).Return(rpcWrapper).AnyTimes()
 	return mockClient1

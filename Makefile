@@ -1,4 +1,5 @@
 
+.PHONY: clean-mocks test run protogen mockgen build clean test-nodes
 
 all: clean build
 
@@ -13,13 +14,16 @@ protogen:
 	protoc --go_out=. --go-grpc_out=. proto/mkraft/service.proto
 	echo "Protocol buffer files generated successfully."
 
-mockgen:
-	mockgen -source=raft/membership.go -destination=./raft/membership_mock.go -package raft
+mockgen: clean-mocks
 	mockgen -source=rpc/service_grpc.pb.go -destination=./rpc/service_mock.go -package rpc
-	mockgen -source=rpc/client.go -destination=./rpc/client_mock.go -package rpc
 	mockgen -source=common/config.go -destination=./common/config_mock.go -package common
-	mockgen -source=raft/consensus.go -destination=./raft/consensus_mock.go -package raft
-	mockgen -source=raft/node.go -destination=./raft/node_mock.go -package raft
+	mockgen -source=mkraft/client.go -destination=./mkraft/client_mock.go -package mkraft
+	mockgen -source=mkraft/membership.go -destination=./mkraft/membership_mock.go -package mkraft
+	mockgen -source=mkraft/consensus.go -destination=./mkraft/consensus_mock.go -package mkraft
+	mockgen -source=mkraft/node.go -destination=./mkraft/node_mock.go -package mkraft
+	mockgen -source=mkraft/raftlog.go -destination=./mkraft/raftlog_mock.go -package mkraft
+clean-mocks:
+	find . -type f -name '*_mock.go' -exec rm -f {} +
 
 build:
 	echo "Building the project..."

@@ -11,7 +11,8 @@ import (
 	_ "google.golang.org/grpc/encoding/gzip"
 
 	"github.com/maki3cat/mkraft/common"
-	"github.com/maki3cat/mkraft/raft"
+	"github.com/maki3cat/mkraft/mkraft"
+	"github.com/maki3cat/mkraft/mkraft/pluggable"
 	pb "github.com/maki3cat/mkraft/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -19,14 +20,17 @@ import (
 )
 
 func NewServer(cfg common.ConfigIface, logger *zap.Logger) (*Server, error) {
-
-	membershipMgr, err := raft.NewMembershipMgrWithStaticConfig(logger, cfg)
+	membershipMgr, err := mkraft.NewMembershipMgrWithStaticConfig(logger, cfg)
 	if err != nil {
 		return nil, err
 	}
+
+	raftLogIface := mkraft.NewRaftLogsImpl(cfg.GetRaftLogFilePath())
+	statemachine := pluggable.NewStateMachineNoOpImpl()
+
 	nodeID := cfg.GetMembership().CurrentNodeID
-	node := raft.NewNode(nodeID, cfg, logger, membershipMgr)
-	handlers := raft.NewHandlers(logger, node)
+	node := mkraft.NewNode(nodeID, cfg, logger, membershipMgr, raftLogIface, statemachine)
+	handlers := mkraft.NewHandlers(logger, node)
 
 	server := &Server{
 		logger:     logger,
@@ -47,11 +51,11 @@ func NewServer(cfg common.ConfigIface, logger *zap.Logger) (*Server, error) {
 type Server struct {
 	logger     *zap.Logger
 	cfg        common.ConfigIface
-	node       raft.NodeIface
-	membership raft.MembershipMgrIface
+	node       mkraft.NodeIface
+	membership mkraft.MembershipMgrIface
 
 	grpcServer *grpc.Server
-	handler    *raft.Handlers
+	handler    *mkraft.Handlers
 }
 
 func (s *Server) contextCheckInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {

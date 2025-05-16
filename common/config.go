@@ -21,6 +21,7 @@ type ConfigIface interface {
 	GetLeaderHeartbeatPeriod() time.Duration
 
 	GetRaftNodeRequestBufferSize() int
+	GetRaftLogFilePath() string
 
 	String() string
 	GetMinRemainingTimeForRPC() time.Duration
@@ -108,7 +109,8 @@ type (
 	}
 
 	BasicConfig struct {
-		RaftNodeRequestBufferSize int `yaml:"raft_node_request_buffer_size" json:"raft_node_request_buffer_size" validate:"min=1"`
+		RaftLogFilePath           string `yaml:"raft_log_file_path" json:"raft_log_file_path" validate:"nonzero"`
+		RaftNodeRequestBufferSize int    `yaml:"raft_node_request_buffer_size" json:"raft_node_request_buffer_size" validate:"min=1"`
 
 		// RPC timeout
 		RPCRequestTimeoutInMs        int `yaml:"rpc_request_timeout_in_ms" json:"rpc_request_timeout_in_ms" validate:"min=1"`
@@ -125,6 +127,10 @@ type (
 		MinRemainingTimeForRPCInMs int `yaml:"min_remaining_time_for_rpc_in_ms" json:"min_remaining_time_for_rpc_in_ms" validate:"min=1"`
 	}
 )
+
+func (c *Config) GetRaftLogFilePath() string {
+	return c.BasicConfig.RaftLogFilePath
+}
 
 func (c *Config) GetClusterSize() int {
 	return c.Membership.ClusterSize
