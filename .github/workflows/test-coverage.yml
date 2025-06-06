@@ -7,7 +7,7 @@ on:
   push:
     branches: ["main"]
   pull_request:
-    branches: ["main"]
+    types: [opened, reopened, synchronize]
 
 jobs:
   build-and-test:
@@ -25,21 +25,21 @@ jobs:
           name: code-coverage
           path: coverage.out
 
-  # coverage-report:
-  #   needs: build-and-test
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
+  coverage-report:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
   
-  #     # Download the coverage artifact from the current build
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         name: code-coverage
-  #         path: .
-      
-  #     # Generate the coverage report
-  #     - name: Generate coverage report
-  #       uses: fgrosse/go-coverage-report@v1.2.0
-  #       with:
-  #         coverage-file-name: coverage.out
-  #         report-only: true
+      # Download the coverage artifact from the current build
+      - uses: actions/download-artifact@v4
+        with:
+          name: code-coverage
+          path: .
+    
+      # Generate the coverage report
+      - name: Generate coverage report
+        uses: fgrosse/go-coverage-report@v1.2.0
+        with:
+          coverage-file-name: coverage.out
+          report-only: true
