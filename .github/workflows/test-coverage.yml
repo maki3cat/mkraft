@@ -28,6 +28,9 @@ jobs:
   coverage-report:
     needs: build-and-test
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
   
