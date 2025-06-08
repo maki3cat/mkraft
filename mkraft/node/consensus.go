@@ -61,12 +61,21 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 
 	peersCount := len(peerClients)
 	resChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
+
+	// check deadline and create rpc timeout
+	deadline, deadlineSet := ctx.Deadline()
+	if !deadlineSet {
+		return nil, errors.New("deadline is not set")
+	}
+	rpcTimtout := time.Until(deadline)
+	if rpcTimtout <= 0 {
+		return nil, errors.New("deadline is in the past")
+	}
+
 	for _, member := range peerClients {
 		// FAN-OUT
 		go func() {
 			memberHandle := member
-			deadline, _ := ctx.Deadline()
-			rpcTimtout := time.Until(deadline)
 			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
 			defer rpcCancel()
 			// FAN-IN
@@ -152,12 +161,21 @@ func (n *Node) ConsensusAppendEntries(
 
 	// in paralelel, send append entries to all peers
 	allRespChan := make(chan utils.RPCRespWrapper[*rpc.AppendEntriesResponse], len(peerClients))
+
+	// check deadline and create rpc timeout
+	deadline, deadlineSet := ctx.Deadline()
+	if !deadlineSet {
+		return nil, errors.New("deadline is not set")
+	}
+	rpcTimtout := time.Until(deadline)
+	if rpcTimtout <= 0 {
+		return nil, errors.New("deadline is in the past")
+	}
+
 	for nodeID, member := range peerClients {
 		// FAN-OUT
 		go func(nodeID string, client peers.InternalClientIface) {
 
-			deadline, _ := ctx.Deadline()
-			rpcTimtout := time.Until(deadline)
 			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
 			defer rpcCancel()
 
