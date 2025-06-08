@@ -67,6 +67,12 @@ func (n *Node) getCommitIdx() uint64 {
 	return n.commitIndex
 }
 
+// From Paper:
+// • If there exists an N such that N > commitIndex, a majority
+// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
+// implementation gap:
+// todo: to add change ths update method different for leader and noleader
+// so that the update of commitIdx is more flexible
 func (n *Node) incrementCommitIdx(numberOfCommand uint64) {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
@@ -85,7 +91,7 @@ func (n *Node) incrementLastApplied(numberOfCommand uint64) {
 // maki: Updating a follower's match/next index is independent of whether consensus is reached.
 // Updating matchIndex/nextIndex is a per-follower operation.
 // Reaching consensus (a majority of nodes having the same entry) is a cluster-wide operation.
-func (n *Node) incrementPeersNextIndexOnSuccess(nodeID string, logCnt uint64) {
+func (n *Node) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 
@@ -100,12 +106,16 @@ func (n *Node) incrementPeersNextIndexOnSuccess(nodeID string, logCnt uint64) {
 	} else {
 		n.nextIndex[nodeID] = logCnt + 1
 	}
+
+	// todo: how to init matchIndex after a total crash?
+	// directly equal the matchIndex to the nextIndex - 1,
+	// so that it can be updated to a correct value even from 0 in the first place
 	n.matchIndex[nodeID] = n.nextIndex[nodeID] - 1
 }
 
 // important invariant: matchIndex[follower] ≤ nextIndex[follower] - 1
 // if the matchIndex is less than nextIndex-1, appendEntries will fail and the follower's nextIndex will be decremented
-func (n *Node) decrementPeersNextIndexOnFailure(nodeID string) {
+func (n *Node) decrPeerIdxAfterLogRepli(nodeID string) {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 

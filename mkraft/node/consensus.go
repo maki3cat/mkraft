@@ -11,6 +11,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// algorithm about consensus
+func calculateIfMajorityMet(total, peerVoteAccumulated int) bool {
+	return (peerVoteAccumulated + 1) >= total/2+1
+}
+
+func calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed int) bool {
+	majority := total/2 + 1
+	majorityNeeded := majority - 1
+	needed := majorityNeeded - peerVoteAccumulated
+	possibleRespondant := peersCount - voteFailed - peerVoteAccumulated
+	return possibleRespondant < needed
+}
+
+// peers communication to get the consensus
 type AppendEntriesConsensusResp struct {
 	Term    uint32
 	Success bool
@@ -109,9 +123,12 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 	panic("this should not happen, the consensus algorithm is not implmented correctly")
 }
 
-// also update the peer index in this method
+// goroutine management:this method expands goroutines to the number of peers,
+// but since this system handles appendEnrines once a time in a serial way
+// I don't think we need to worry about the explosion of goroutines
 func (n *Node) ConsensusAppendEntries(
 	ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error) {
+
 	requestID := common.GetRequestID(ctx)
 	total := n.membership.GetMemberCount()
 	peerClients, err := n.membership.GetAllPeerClientsV2()
@@ -121,12 +138,14 @@ func (n *Node) ConsensusAppendEntries(
 			zap.String("requestID", requestID))
 		return nil, err
 	}
+
+	// check if registered peers are enough to get the consensus
 	if !calculateIfMajorityMet(total, len(peerClients)) {
-		n.logger.Error("not enough peer clients found",
-			zap.String("requestID", requestID))
-		return nil, errors.New("not enough peer clients found")
+		n.logger.Error("not enough peer clients registered for consensus", zap.String("requestID", requestID))
+		return nil, common.ErrNotEnoughPeersForConsensus
 	}
 
+	// in paralelel, send append entries to all peers
 	allRespChan := make(chan utils.RPCRespWrapper[*rpc.AppendEntriesResponse], len(peerClients))
 	for nodeID, member := range peerClients {
 		// FAN-OUT
@@ -134,16 +153,16 @@ func (n *Node) ConsensusAppendEntries(
 			ctxWithTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetElectionTimeout())
 			defer cancel()
 			req := peerReq[nodeID]
-			// FAN-IN
 			resp := client.SendAppendEntries(ctxWithTimeout, req)
 			if resp.Err == nil {
 				if resp.Resp.Success {
-					n.incrementPeersNextIndexOnSuccess(nodeID, uint64(len(req.Entries)))
+					// update the peers' index
+					n.incrPeerIdxAfterLogRepli(nodeID, uint64(len(req.Entries)))
 				} else {
-					n.decrementPeersNextIndexOnFailure(nodeID)
+					n.decrPeerIdxAfterLogRepli(nodeID)
 				}
 			}
-			// update the peers' index
+			// FAN-IN
 			allRespChan <- resp
 		}(nodeID, member)
 	}
@@ -208,16 +227,4 @@ func (n *Node) ConsensusAppendEntries(
 		}
 	}
 	return nil, errors.New("this should not happen, the consensus algorithm is not implmented correctly")
-}
-
-func calculateIfMajorityMet(total, peerVoteAccumulated int) bool {
-	return (peerVoteAccumulated + 1) >= total/2+1
-}
-
-func calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed int) bool {
-	majority := total/2 + 1
-	majorityNeeded := majority - 1
-	needed := majorityNeeded - peerVoteAccumulated
-	possibleRespondant := peersCount - voteFailed - peerVoteAccumulated
-	return possibleRespondant < needed
 }

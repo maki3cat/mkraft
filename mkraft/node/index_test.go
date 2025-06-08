@@ -131,12 +131,12 @@ func TestIncrementPeersNextIndexOnSuccess(t *testing.T) {
 	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 
 	// Test first time increment
-	node.incrementPeersNextIndexOnSuccess("peer1", 3)
+	node.incrPeerIdxAfterLogRepli("peer1", 3)
 	assert.Equal(t, uint64(4), node.nextIndex["peer1"])
 	assert.Equal(t, uint64(3), node.matchIndex["peer1"])
 
 	// Test subsequent increment
-	node.incrementPeersNextIndexOnSuccess("peer1", 2)
+	node.incrPeerIdxAfterLogRepli("peer1", 2)
 	assert.Equal(t, uint64(6), node.nextIndex["peer1"])
 	assert.Equal(t, uint64(5), node.matchIndex["peer1"])
 }
@@ -153,12 +153,12 @@ func TestDecrementPeersNextIndexOnFailure(t *testing.T) {
 	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node.nextIndex["peer1"] = 5
 
-	node.decrementPeersNextIndexOnFailure("peer1")
+	node.decrPeerIdxAfterLogRepli("peer1")
 	assert.Equal(t, uint64(4), node.nextIndex["peer1"])
 
 	// Test minimum value
 	node.nextIndex["peer1"] = 1
-	node.decrementPeersNextIndexOnFailure("peer1")
+	node.decrPeerIdxAfterLogRepli("peer1")
 	assert.Equal(t, uint64(1), node.nextIndex["peer1"])
 }
 
