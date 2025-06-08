@@ -35,6 +35,9 @@ type MajorityRequestVoteResp struct {
 	VoteGranted bool
 }
 
+// synchronous call to wait until the consensus is reached or is failed
+// each internal rpc call is retried if a RPC call times out with no response
+// todo: make sure there is someone calling the ctx.Done() to stop the infinite retry
 func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
 
 	requestID := common.GetRequestID(ctx)
@@ -82,7 +85,7 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 					zap.Int("voteFailed", voteFailed),
 					zap.String("requestID", requestID))
 				if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed) {
-					return nil, errors.New("majority of nodes failed to respond")
+					return nil, common.ErrMajorityNotMet
 				} else {
 					continue
 				}
@@ -108,19 +111,19 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 					} else {
 						voteFailed++
 						if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed) {
-							return nil, errors.New("majority of nodes failed to respond")
+							return nil, common.ErrMajorityNotMet
 						}
 					}
 				}
 				if resp.Term < request.Term {
-					panic("this should not happen, the consensus algorithm is not implmented correctly")
+					return nil, common.ErrInvariantsBroken
 				}
 			}
 		case <-ctx.Done():
-			return nil, errors.New("context done")
+			return nil, common.ErrContextDone
 		}
 	}
-	panic("this should not happen, the consensus algorithm is not implmented correctly")
+	return nil, common.ErrInvariantsBroken
 }
 
 // goroutine management:this method expands goroutines to the number of peers,
