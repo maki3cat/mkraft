@@ -134,7 +134,7 @@ func TestInternalClientImpl_SendRequestVoteWithRetries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	respChan := client.RequestVoteWithInfiniteRetries(ctx, req)
+	respChan := client.RequestVoteWithInfRetries(ctx, req)
 	wrapper := <-respChan
 	require.NoError(t, wrapper.Err)
 	assert.Equal(t, expectedResp, wrapper.Resp)
@@ -152,7 +152,7 @@ func TestInternalClientImpl_SendRequestVoteWithRetries(t *testing.T) {
 		Return(expectedResp, nil).
 		Times(1)
 
-	respChan = client.RequestVoteWithInfiniteRetries(ctx, req)
+	respChan = client.RequestVoteWithInfRetries(ctx, req)
 	wrapper = <-respChan
 	require.NoError(t, wrapper.Err)
 	assert.Equal(t, expectedResp, wrapper.Resp)

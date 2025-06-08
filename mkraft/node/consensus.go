@@ -70,7 +70,7 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
 			defer rpcCancel()
 			// FAN-IN
-			resChan <- <-memberHandle.SendRequestVoteWithRetries(rpcCtx, request)
+			resChan <- <-memberHandle.RequestVoteWithInfRetries(rpcCtx, request)
 		}()
 	}
 

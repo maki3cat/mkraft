@@ -56,18 +56,18 @@ func (mr *MockInternalClientIfaceMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockInternalClientIface)(nil).Close))
 }
 
-// RequestVoteWithInfiniteRetries mocks base method.
-func (m *MockInternalClientIface) RequestVoteWithInfiniteRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
+// RequestVoteWithInfRetries mocks base method.
+func (m *MockInternalClientIface) RequestVoteWithInfRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequestVoteWithInfiniteRetries", ctx, req)
+	ret := m.ctrl.Call(m, "RequestVoteWithInfRetries", ctx, req)
 	ret0, _ := ret[0].(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse])
 	return ret0
 }
 
-// RequestVoteWithInfiniteRetries indicates an expected call of RequestVoteWithInfiniteRetries.
-func (mr *MockInternalClientIfaceMockRecorder) RequestVoteWithInfiniteRetries(ctx, req any) *gomock.Call {
+// RequestVoteWithInfRetries indicates an expected call of RequestVoteWithInfRetries.
+func (mr *MockInternalClientIfaceMockRecorder) RequestVoteWithInfRetries(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestVoteWithInfiniteRetries", reflect.TypeOf((*MockInternalClientIface)(nil).RequestVoteWithInfiniteRetries), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestVoteWithInfRetries", reflect.TypeOf((*MockInternalClientIface)(nil).RequestVoteWithInfRetries), ctx, req)
 }
 
 // SayHello mocks base method.
