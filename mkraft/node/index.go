@@ -71,8 +71,11 @@ func (n *Node) getCommitIdx() uint64 {
 // • If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
 // implementation gap:
-// todo: to add change ths update method different for leader and noleader
-// so that the update of commitIdx is more flexible
+// we currently wait for every appendEntries to reach consensus, and then update the commitIdx
+// so we don't reply on matchIndex to update the commitIdx
+// not sure this is a good idea, but this design makes the implementation SIMPLE
+// todo: important
+// so we can prove this 1) test cases; 2) comparison with Hashicorp Raft implementation
 func (n *Node) incrementCommitIdx(numberOfCommand uint64) {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
