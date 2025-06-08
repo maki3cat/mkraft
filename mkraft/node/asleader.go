@@ -116,6 +116,7 @@ func (n *Node) runAsLeaderImpl(ctx context.Context) {
 				batchingSize := n.cfg.GetRaftNodeRequestBufferSize() - 1
 				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
 				clientCommands = append(clientCommands, clientCmd)
+				// todo: filter out all the timeout requests
 				singleJobResult, err = n.syncDoLogReplication(ctx, clientCommands)
 				if err != nil {
 					// todo: as is same with most other panics, temporary solution, shall handle the error properly
