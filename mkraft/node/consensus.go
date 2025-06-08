@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/peers"
@@ -64,8 +65,12 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 		// FAN-OUT
 		go func() {
 			memberHandle := member
+			deadline, _ := ctx.Deadline()
+			rpcTimtout := time.Until(deadline)
+			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
+			defer rpcCancel()
 			// FAN-IN
-			resChan <- <-memberHandle.SendRequestVoteWithRetries(ctx, request)
+			resChan <- <-memberHandle.SendRequestVoteWithRetries(rpcCtx, request)
 		}()
 	}
 
@@ -150,10 +155,14 @@ func (n *Node) ConsensusAppendEntries(
 	for nodeID, member := range peerClients {
 		// FAN-OUT
 		go func(nodeID string, client peers.InternalClientIface) {
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetElectionTimeout())
-			defer cancel()
+
+			deadline, _ := ctx.Deadline()
+			rpcTimtout := time.Until(deadline)
+			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
+			defer rpcCancel()
+
 			req := peerReq[nodeID]
-			resp := client.SendAppendEntries(ctxWithTimeout, req)
+			resp := client.SendAppendEntries(rpcCtx, req)
 			if resp.Err == nil {
 				if resp.Resp.Success {
 					// update the peers' index
