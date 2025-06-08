@@ -33,11 +33,12 @@ type AppendEntriesConsensusResp struct {
 type MajorityRequestVoteResp struct {
 	Term        uint32
 	VoteGranted bool
+	Err         error
 }
 
-// synchronous call to wait until the consensus is reached or is failed
-// each internal rpc call is retried if a RPC call times out with no response
-// todo: make sure there is someone calling the ctx.Done() to stop the infinite retry
+// synchronous call to until the a consensus is reached or is failed
+// it contains forever retry mechanism, so
+// !!! the ctx shall be Done within the election timeout
 func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
 
 	requestID := common.GetRequestID(ctx)
@@ -61,14 +62,10 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 	resChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
 	for _, member := range peerClients {
 		// FAN-OUT
-		// maki: todo topic for go gynastics
 		go func() {
 			memberHandle := member
-			timeout := c.cfg.GetElectionTimeout()
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
 			// FAN-IN
-			resChan <- <-memberHandle.SendRequestVoteWithRetries(ctxWithTimeout, request)
+			resChan <- <-memberHandle.SendRequestVoteWithRetries(ctx, request)
 		}()
 	}
 
