@@ -124,8 +124,12 @@ func (n *Node) RunAsCandidate(ctx context.Context) {
 		n.sem.Release(1)
 		defer electionTicker.Stop()
 	}()
+	// todo: testing should be called cancelled 1) the node degrade to folower; 2) the node starts a new election;
+	// maki: is this a good pattern? this consensus actually has a timeout, so can be combined
+	electionCtx, electionCancel := context.WithTimeout(ctx, n.cfg.GetElectionTimeout())
+	defer electionCancel()
 
-	consensusChan := n.candidateAsyncDoElection(ctx)
+	consensusChan := n.candidateAsyncDoElection(electionCtx)
 	for {
 		currentTerm := n.getCurrentTerm()
 		select {
@@ -166,7 +170,14 @@ func (n *Node) RunAsCandidate(ctx context.Context) {
 				case <-electionTicker.C:
 					// last election reaches no decisive result, either no response or not enough votes
 					// we re-elect
-					consensusChan = n.candidateAsyncDoElection(ctx)
+					electionCancel()
+					electionCtx, electionCancel = context.WithCancel(ctx)
+					defer electionCancel()
+
+					// maki: this should be async so that it has a different goroutine from the one doing receiving req
+					// ;this is important, because it may retry for a long period if not forever
+					// and meanwhile the node shall receive req from others, may be a new leader arises
+					consensusChan = n.candidateAsyncDoElection(electionCtx)
 
 				case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
 					if !req.IsTimeout.Load() {
