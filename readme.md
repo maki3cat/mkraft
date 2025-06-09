@@ -3,12 +3,22 @@
 
 ## Paper and Learning Web
 
-<img src="img/logo2.jpg" alt="My Image" align="right" width="350">
+<img src="img/logo.jpg" alt="My Image" align="right" width="250">
 
 https://raft.github.io/
 
 
-### Basic Raft Properties and Mechanisms that guarantee them
+## Implementation MileStones
+
+### V1 without Testing
+
+Scope: Basic Engineering Framework, Leader Election, Log Replicaiton, Safety
+Design:
+
+<img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
+
+
+<!-- ### Basic Raft Properties and Mechanisms that guarantee them
 Raft guarantees that each of these properties is true at all the time
 #### Leader Election ($5.2)-> DONE
 - Election Safety: at most one leader can be elected in a given term (not time but term) -> ($5.2 Leader Election)
@@ -77,4 +87,4 @@ https://grpc.io/docs/guides/performance/
 ## Implementation Decisions and Extreme Engineering
 - [ ] add batching to handling ClientCommands, and send AppendLogEntries
 - [ ] check prof Yang's improvements of paxos for ideas
-- [ ] check architecture classes of caching and memory hierarchy for ideas
+- [ ] check architecture classes of caching and memory hierarchy for ideas -->
