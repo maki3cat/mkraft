@@ -136,7 +136,7 @@ func (rc *peerClient) AppendEntriesWithRetry(ctx context.Context, req *rpc.Appen
 	const maxRetries = 3
 	var lastErr error
 
-	for i := 0; i < maxRetries; i++ {
+	for i := range maxRetries {
 		resp, err := rc.rawClient.AppendEntries(ctx, req)
 		if err == nil {
 			return resp, nil

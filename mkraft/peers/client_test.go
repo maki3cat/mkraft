@@ -34,9 +34,9 @@ func TestNewRobustClientImpl(t *testing.T) {
 	assert.Equal(t, "localhost:8080", client.nodeAddr)
 }
 
-func TestRobustClientImpl_AppendEntriesWithRetry(t *testing.T) {
+func setupAppendEntriesTest(t *testing.T) (*peerClient, *rpc.MockRaftServiceClient, *rpc.AppendEntriesRequest) {
 	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	t.Cleanup(func() { ctrl.Finish() })
 
 	mockClient := rpc.NewMockRaftServiceClient(ctrl)
 	mockConfig := common.NewMockConfigIface(ctrl)
@@ -54,12 +54,18 @@ func TestRobustClientImpl_AppendEntriesWithRetry(t *testing.T) {
 		Term:     1,
 		LeaderId: "leader",
 	}
+
+	return client, mockClient, req
+}
+
+func TestAppendEntriesWithRetry_Success(t *testing.T) {
+	client, mockClient, req := setupAppendEntriesTest(t)
+
 	expectedResp := &rpc.AppendEntriesResponse{
 		Term:    1,
 		Success: true,
 	}
 
-	// Test successful case
 	mockClient.EXPECT().
 		AppendEntries(gomock.Any(), req).
 		Return(expectedResp, nil)
@@ -67,17 +73,35 @@ func TestRobustClientImpl_AppendEntriesWithRetry(t *testing.T) {
 	resp, err := client.AppendEntriesWithRetry(context.Background(), req)
 	require.NoError(t, err)
 	assert.Equal(t, expectedResp, resp)
+}
 
-	// Test context cancellation
+func TestAppendEntriesWithRetry_ContextCancellation(t *testing.T) {
+	client, mockClient, req := setupAppendEntriesTest(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	mockClient.EXPECT().
 		AppendEntries(gomock.Any(), req).
 		Return(nil, assert.AnError)
 	cancel() // Cancel context before retry
 
-	resp, err = client.AppendEntriesWithRetry(ctx, req)
+	resp, err := client.AppendEntriesWithRetry(ctx, req)
 	require.Error(t, err)
 	assert.Equal(t, common.ErrContextDone, err)
+	assert.Nil(t, resp)
+}
+
+func TestAppendEntriesWithRetry_FailAfterThreeRetries(t *testing.T) {
+	client, mockClient, req := setupAppendEntriesTest(t)
+
+	// Expect 3 failed attempts
+	mockClient.EXPECT().
+		AppendEntries(gomock.Any(), req).
+		Return(nil, assert.AnError).
+		Times(3)
+
+	resp, err := client.AppendEntriesWithRetry(context.Background(), req)
+	require.Error(t, err)
+	assert.Equal(t, assert.AnError, err)
 	assert.Nil(t, resp)
 }
 
@@ -194,10 +218,60 @@ func TestRobustClientImpl_RequestVoteWithRetry_ContextCancellation(t *testing.T)
 	mockClient.EXPECT().
 		RequestVote(gomock.Any(), req).
 		Return(nil, assert.AnError).
-		Times(1)
-	cancel() // Cancel context before retry
+		Times(0)
 
+	cancel() // Cancel context before retry
 	resp, err := client.RequestVoteWithRetry(ctx, req)
+	require.Error(t, err)
+	assert.Equal(t, common.ErrContextDone, err)
+	assert.Nil(t, resp)
+}
+
+func TestRobustClientImpl_RequestVoteWithRetry_ContextCancellationAfterRetries(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := rpc.NewMockRaftServiceClient(ctrl)
+	mockConfig := common.NewMockConfigIface(ctrl)
+	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
+	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
+
+	client := &peerClient{
+		nodeId:    "test-node",
+		nodeAddr:  "localhost:8080",
+		rawClient: mockClient,
+		logger:    zap.NewNop(),
+		cfg:       mockConfig,
+	}
+
+	req := &rpc.RequestVoteRequest{
+		Term:         1,
+		CandidateId:  "candidate",
+		LastLogIndex: 1,
+		LastLogTerm:  1,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	mockClient.EXPECT().
+		RequestVote(gomock.Any(), req).
+		Return(nil, assert.AnError).
+		MinTimes(1)
+
+	// Start the request in a goroutine
+	respChan := make(chan *rpc.RequestVoteResponse)
+	errChan := make(chan error)
+	go func() {
+		resp, err := client.RequestVoteWithRetry(ctx, req)
+		respChan <- resp
+		errChan <- err
+	}()
+
+	// Wait a bit to allow 3 retries
+	time.Sleep(time.Millisecond * 100)
+	cancel() // Cancel after 3 retries
+
+	resp := <-respChan
+	err := <-errChan
 	require.Error(t, err)
 	assert.Equal(t, common.ErrContextDone, err)
 	assert.Nil(t, resp)
