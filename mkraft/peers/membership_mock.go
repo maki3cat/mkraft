@@ -40,10 +40,10 @@ func (m *MockMembershipMgrIface) EXPECT() *MockMembershipMgrIfaceMockRecorder {
 }
 
 // GetAllPeerClients mocks base method.
-func (m *MockMembershipMgrIface) GetAllPeerClients() ([]InternalClientIface, error) {
+func (m *MockMembershipMgrIface) GetAllPeerClients() ([]PeerClient, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllPeerClients")
-	ret0, _ := ret[0].([]InternalClientIface)
+	ret0, _ := ret[0].([]PeerClient)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -55,10 +55,10 @@ func (mr *MockMembershipMgrIfaceMockRecorder) GetAllPeerClients() *gomock.Call {
 }
 
 // GetAllPeerClientsV2 mocks base method.
-func (m *MockMembershipMgrIface) GetAllPeerClientsV2() (map[string]InternalClientIface, error) {
+func (m *MockMembershipMgrIface) GetAllPeerClientsV2() (map[string]PeerClient, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllPeerClientsV2")
-	ret0, _ := ret[0].(map[string]InternalClientIface)
+	ret0, _ := ret[0].(map[string]PeerClient)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

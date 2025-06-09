@@ -79,7 +79,12 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
 			defer rpcCancel()
 			// FAN-IN
-			resChan <- <-memberHandle.RequestVoteWithInfRetries(rpcCtx, request)
+			resp, err := memberHandle.RequestVoteWithRetry(rpcCtx, request)
+			res := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
+				Resp: resp,
+				Err:  err,
+			}
+			resChan <- res
 		}()
 	}
 
@@ -174,23 +179,33 @@ func (n *Node) ConsensusAppendEntries(
 
 	for nodeID, member := range peerClients {
 		// FAN-OUT
-		go func(nodeID string, client peers.InternalClientIface) {
+		go func(nodeID string, client peers.PeerClient) {
 
 			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
 			defer rpcCancel()
 
 			req := peerReq[nodeID]
-			resp := client.SendAppendEntries(rpcCtx, req)
-			if resp.Err == nil {
-				if resp.Resp.Success {
+			resp, err := client.AppendEntriesWithRetry(rpcCtx, req)
+			// FAN-IN
+			if err != nil {
+				n.logger.Error("error in sending append entries to one node",
+					zap.Error(err),
+					zap.String("requestID", requestID))
+				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+					Err: err,
+				}
+				return
+			} else {
+				if resp.Success {
 					// update the peers' index
 					n.incrPeerIdxAfterLogRepli(nodeID, uint64(len(req.Entries)))
 				} else {
 					n.decrPeerIdxAfterLogRepli(nodeID)
 				}
+				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+					Resp: resp,
+				}
 			}
-			// FAN-IN
-			allRespChan <- resp
 		}(nodeID, member)
 	}
 

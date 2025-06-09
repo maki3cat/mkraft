@@ -15,7 +15,7 @@ import (
 	"github.com/maki3cat/mkraft/rpc"
 )
 
-func TestNewInternalClient(t *testing.T) {
+func TestNewRobustClientImpl(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -26,17 +26,15 @@ func TestNewInternalClient(t *testing.T) {
 
 	logger := zap.NewNop()
 
-	client, err := NewInternalClient("test-node", "localhost:8080", logger, mockConfig)
+	client, err := NewPeerClientImpl("test-node", "localhost:8080", logger, mockConfig)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
-	impl, ok := client.(*InternalClientImpl)
-	require.True(t, ok)
-	assert.Equal(t, "test-node", impl.nodeId)
-	assert.Equal(t, "localhost:8080", impl.nodeAddr)
+	assert.Equal(t, "test-node", client.nodeId)
+	assert.Equal(t, "localhost:8080", client.nodeAddr)
 }
 
-func TestInternalClientImpl_SayHello(t *testing.T) {
+func TestRobustClientImpl_AppendEntriesWithRetry(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -44,35 +42,7 @@ func TestInternalClientImpl_SayHello(t *testing.T) {
 	mockConfig := common.NewMockConfigIface(ctrl)
 	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
 
-	client := &InternalClientImpl{
-		nodeId:    "test-node",
-		nodeAddr:  "localhost:8080",
-		rawClient: mockClient,
-		logger:    zap.NewNop(),
-		cfg:       mockConfig,
-	}
-
-	req := &rpc.HelloRequest{Name: "test"}
-	expectedResp := &rpc.HelloReply{Message: "Hello test"}
-
-	mockClient.EXPECT().
-		SayHello(gomock.Any(), req).
-		Return(expectedResp, nil)
-
-	resp, err := client.SayHello(context.Background(), req)
-	require.NoError(t, err)
-	assert.Equal(t, expectedResp, resp)
-}
-
-func TestInternalClientImpl_SendAppendEntries(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockClient := rpc.NewMockRaftServiceClient(ctrl)
-	mockConfig := common.NewMockConfigIface(ctrl)
-	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
-
-	client := &InternalClientImpl{
+	client := &peerClient{
 		nodeId:    "test-node",
 		nodeAddr:  "localhost:8080",
 		rawClient: mockClient,
@@ -89,16 +59,29 @@ func TestInternalClientImpl_SendAppendEntries(t *testing.T) {
 		Success: true,
 	}
 
+	// Test successful case
 	mockClient.EXPECT().
 		AppendEntries(gomock.Any(), req).
 		Return(expectedResp, nil)
 
-	wrapper := client.SendAppendEntries(context.Background(), req)
-	require.NoError(t, wrapper.Err)
-	assert.Equal(t, expectedResp, wrapper.Resp)
+	resp, err := client.AppendEntriesWithRetry(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, expectedResp, resp)
+
+	// Test context cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	mockClient.EXPECT().
+		AppendEntries(gomock.Any(), req).
+		Return(nil, assert.AnError)
+	cancel() // Cancel context before retry
+
+	resp, err = client.AppendEntriesWithRetry(ctx, req)
+	require.Error(t, err)
+	assert.Equal(t, common.ErrContextDone, err)
+	assert.Nil(t, resp)
 }
 
-func TestInternalClientImpl_SendRequestVoteWithRetries(t *testing.T) {
+func TestRobustClientImpl_RequestVoteWithRetry_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -107,7 +90,7 @@ func TestInternalClientImpl_SendRequestVoteWithRetries(t *testing.T) {
 	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
 	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
 
-	client := &InternalClientImpl{
+	client := &peerClient{
 		nodeId:    "test-node",
 		nodeAddr:  "localhost:8080",
 		rawClient: mockClient,
@@ -126,7 +109,6 @@ func TestInternalClientImpl_SendRequestVoteWithRetries(t *testing.T) {
 		VoteGranted: true,
 	}
 
-	// Test successful case
 	mockClient.EXPECT().
 		RequestVote(gomock.Any(), req).
 		Return(expectedResp, nil)
@@ -134,13 +116,40 @@ func TestInternalClientImpl_SendRequestVoteWithRetries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	respChan := client.RequestVoteWithInfRetries(ctx, req)
-	wrapper := <-respChan
-	require.NoError(t, wrapper.Err)
-	assert.Equal(t, expectedResp, wrapper.Resp)
+	resp, err := client.RequestVoteWithRetry(ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, expectedResp, resp)
+}
 
-	// Test error case with retry
-	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
+func TestRobustClientImpl_RequestVoteWithRetry_ErrorWithRetry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := rpc.NewMockRaftServiceClient(ctrl)
+	mockConfig := common.NewMockConfigIface(ctrl)
+	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
+	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
+
+	client := &peerClient{
+		nodeId:    "test-node",
+		nodeAddr:  "localhost:8080",
+		rawClient: mockClient,
+		logger:    zap.NewNop(),
+		cfg:       mockConfig,
+	}
+
+	req := &rpc.RequestVoteRequest{
+		Term:         1,
+		CandidateId:  "candidate",
+		LastLogIndex: 1,
+		LastLogTerm:  1,
+	}
+	expectedResp := &rpc.RequestVoteResponse{
+		Term:        1,
+		VoteGranted: true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	mockClient.EXPECT().
@@ -152,18 +161,54 @@ func TestInternalClientImpl_SendRequestVoteWithRetries(t *testing.T) {
 		Return(expectedResp, nil).
 		Times(1)
 
-	respChan = client.RequestVoteWithInfRetries(ctx, req)
-	wrapper = <-respChan
-	require.NoError(t, wrapper.Err)
-	assert.Equal(t, expectedResp, wrapper.Resp)
+	resp, err := client.RequestVoteWithRetry(ctx, req)
+	require.NoError(t, err)
+	assert.Equal(t, expectedResp, resp)
 }
 
-func TestInternalClientImpl_Close(t *testing.T) {
+func TestRobustClientImpl_RequestVoteWithRetry_ContextCancellation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := rpc.NewMockRaftServiceClient(ctrl)
+	mockConfig := common.NewMockConfigIface(ctrl)
+	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
+	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
+
+	client := &peerClient{
+		nodeId:    "test-node",
+		nodeAddr:  "localhost:8080",
+		rawClient: mockClient,
+		logger:    zap.NewNop(),
+		cfg:       mockConfig,
+	}
+
+	req := &rpc.RequestVoteRequest{
+		Term:         1,
+		CandidateId:  "candidate",
+		LastLogIndex: 1,
+		LastLogTerm:  1,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	mockClient.EXPECT().
+		RequestVote(gomock.Any(), req).
+		Return(nil, assert.AnError).
+		Times(1)
+	cancel() // Cancel context before retry
+
+	resp, err := client.RequestVoteWithRetry(ctx, req)
+	require.Error(t, err)
+	assert.Equal(t, common.ErrContextDone, err)
+	assert.Nil(t, resp)
+}
+
+func TestRobustClientImpl_Close(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockConfig := common.NewMockConfigIface(ctrl)
-	client := &InternalClientImpl{
+	client := &peerClient{
 		nodeId:   "test-node",
 		nodeAddr: "localhost:8080",
 		logger:   zap.NewNop(),

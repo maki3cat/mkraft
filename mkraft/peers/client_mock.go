@@ -13,37 +13,51 @@ import (
 	context "context"
 	reflect "reflect"
 
-	utils "github.com/maki3cat/mkraft/mkraft/utils"
 	rpc "github.com/maki3cat/mkraft/rpc"
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockInternalClientIface is a mock of InternalClientIface interface.
-type MockInternalClientIface struct {
+// MockPeerClient is a mock of PeerClient interface.
+type MockPeerClient struct {
 	ctrl     *gomock.Controller
-	recorder *MockInternalClientIfaceMockRecorder
+	recorder *MockPeerClientMockRecorder
 	isgomock struct{}
 }
 
-// MockInternalClientIfaceMockRecorder is the mock recorder for MockInternalClientIface.
-type MockInternalClientIfaceMockRecorder struct {
-	mock *MockInternalClientIface
+// MockPeerClientMockRecorder is the mock recorder for MockPeerClient.
+type MockPeerClientMockRecorder struct {
+	mock *MockPeerClient
 }
 
-// NewMockInternalClientIface creates a new mock instance.
-func NewMockInternalClientIface(ctrl *gomock.Controller) *MockInternalClientIface {
-	mock := &MockInternalClientIface{ctrl: ctrl}
-	mock.recorder = &MockInternalClientIfaceMockRecorder{mock}
+// NewMockPeerClient creates a new mock instance.
+func NewMockPeerClient(ctrl *gomock.Controller) *MockPeerClient {
+	mock := &MockPeerClient{ctrl: ctrl}
+	mock.recorder = &MockPeerClientMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockInternalClientIface) EXPECT() *MockInternalClientIfaceMockRecorder {
+func (m *MockPeerClient) EXPECT() *MockPeerClientMockRecorder {
 	return m.recorder
 }
 
+// AppendEntriesWithRetry mocks base method.
+func (m *MockPeerClient) AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AppendEntriesWithRetry", ctx, req)
+	ret0, _ := ret[0].(*rpc.AppendEntriesResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AppendEntriesWithRetry indicates an expected call of AppendEntriesWithRetry.
+func (mr *MockPeerClientMockRecorder) AppendEntriesWithRetry(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEntriesWithRetry", reflect.TypeOf((*MockPeerClient)(nil).AppendEntriesWithRetry), ctx, req)
+}
+
 // Close mocks base method.
-func (m *MockInternalClientIface) Close() error {
+func (m *MockPeerClient) Close() error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Close")
 	ret0, _ := ret[0].(error)
@@ -51,64 +65,22 @@ func (m *MockInternalClientIface) Close() error {
 }
 
 // Close indicates an expected call of Close.
-func (mr *MockInternalClientIfaceMockRecorder) Close() *gomock.Call {
+func (mr *MockPeerClientMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockInternalClientIface)(nil).Close))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockPeerClient)(nil).Close))
 }
 
-// RequestVoteWithInfRetries mocks base method.
-func (m *MockInternalClientIface) RequestVoteWithInfRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
+// RequestVoteWithRetry mocks base method.
+func (m *MockPeerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequestVoteWithInfRetries", ctx, req)
-	ret0, _ := ret[0].(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse])
-	return ret0
-}
-
-// RequestVoteWithInfRetries indicates an expected call of RequestVoteWithInfRetries.
-func (mr *MockInternalClientIfaceMockRecorder) RequestVoteWithInfRetries(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestVoteWithInfRetries", reflect.TypeOf((*MockInternalClientIface)(nil).RequestVoteWithInfRetries), ctx, req)
-}
-
-// SayHello mocks base method.
-func (m *MockInternalClientIface) SayHello(ctx context.Context, req *rpc.HelloRequest) (*rpc.HelloReply, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SayHello", ctx, req)
-	ret0, _ := ret[0].(*rpc.HelloReply)
+	ret := m.ctrl.Call(m, "RequestVoteWithRetry", ctx, req)
+	ret0, _ := ret[0].(*rpc.RequestVoteResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// SayHello indicates an expected call of SayHello.
-func (mr *MockInternalClientIfaceMockRecorder) SayHello(ctx, req any) *gomock.Call {
+// RequestVoteWithRetry indicates an expected call of RequestVoteWithRetry.
+func (mr *MockPeerClientMockRecorder) RequestVoteWithRetry(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SayHello", reflect.TypeOf((*MockInternalClientIface)(nil).SayHello), ctx, req)
-}
-
-// SendAppendEntries mocks base method.
-func (m *MockInternalClientIface) SendAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) utils.RPCRespWrapper[*rpc.AppendEntriesResponse] {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendAppendEntries", ctx, req)
-	ret0, _ := ret[0].(utils.RPCRespWrapper[*rpc.AppendEntriesResponse])
-	return ret0
-}
-
-// SendAppendEntries indicates an expected call of SendAppendEntries.
-func (mr *MockInternalClientIfaceMockRecorder) SendAppendEntries(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendAppendEntries", reflect.TypeOf((*MockInternalClientIface)(nil).SendAppendEntries), ctx, req)
-}
-
-// String mocks base method.
-func (m *MockInternalClientIface) String() string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "String")
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// String indicates an expected call of String.
-func (mr *MockInternalClientIfaceMockRecorder) String() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "String", reflect.TypeOf((*MockInternalClientIface)(nil).String))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestVoteWithRetry", reflect.TypeOf((*MockPeerClient)(nil).RequestVoteWithRetry), ctx, req)
 }

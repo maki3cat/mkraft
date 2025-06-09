@@ -2,7 +2,6 @@ package peers
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -16,26 +15,23 @@ import (
 	"github.com/maki3cat/mkraft/rpc"
 )
 
-var _ InternalClientIface = (*InternalClientImpl)(nil)
+var _ PeerClient = (*peerClient)(nil)
 
-type InternalClientIface interface {
+type PeerClient interface {
 
-	// send request vote is keep retrying until the context is done or the response is received
-	// todo: make sure this retry is infinite until cancel the context or the response is received
-	RequestVoteWithInfRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse]
+	// 1. it has forever retry until the context is done or the response is received
+	// 2. it has retry logic to handle the rpc timeout -> which is handled by the timeoutClientInterceptor
+	// 3. it is synchronous call
+	RequestVoteWithRetry(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error)
 
-	// send append entries is one simple sync rpc call with rpc timeout
-	// todo: make sure this retry is infinite until cancel the context or the response is received
-	SendAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) utils.RPCRespWrapper[*rpc.AppendEntriesResponse]
-
-	SayHello(ctx context.Context, req *rpc.HelloRequest) (*rpc.HelloReply, error)
-
-	String() string
+	// implementation gap:
+	// currently, the retry logic is simpler for append entries that we retry 3 times
+	AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error)
 
 	Close() error
 }
 
-type InternalClientImpl struct {
+type peerClient struct {
 	nodeId    string
 	nodeAddr  string
 	rawClient rpc.RaftServiceClient
@@ -44,9 +40,9 @@ type InternalClientImpl struct {
 	cfg       common.ConfigIface
 }
 
-func NewInternalClient(
-	nodeID, nodeAddr string, logger *zap.Logger, cfg common.ConfigIface) (InternalClientIface, error) {
-	client := &InternalClientImpl{
+func NewPeerClientImpl(
+	nodeID, nodeAddr string, logger *zap.Logger, cfg common.ConfigIface) (*peerClient, error) {
+	client := &peerClient{
 		nodeId:   nodeID,
 		nodeAddr: nodeAddr,
 		logger:   logger,
@@ -66,11 +62,12 @@ func NewInternalClient(
 		logger.Error("failed to create gRPC connection", zap.String("nodeID", nodeID), zap.String("nodeAddr", nodeAddr), zap.Error(err))
 		return nil, err
 	}
+	client.conn = conn
 	client.rawClient = rpc.NewRaftServiceClient(conn)
 	return client, nil
 }
 
-func (rc *InternalClientImpl) Close() error {
+func (rc *peerClient) Close() error {
 	if rc.conn != nil {
 		err := rc.conn.Close()
 		if err != nil {
@@ -82,70 +79,50 @@ func (rc *InternalClientImpl) Close() error {
 	return nil
 }
 
-func (rc *InternalClientImpl) String() string {
-	return fmt.Sprintf("InternalClientImpl: %s, %s", rc.nodeId, rc.nodeAddr)
-}
-
-func (rc *InternalClientImpl) SayHello(ctx context.Context, req *rpc.HelloRequest) (*rpc.HelloReply, error) {
-	return rc.rawClient.SayHello(ctx, req)
-}
-
-func (rc *InternalClientImpl) SendAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) utils.RPCRespWrapper[*rpc.AppendEntriesResponse] {
-	resp, err := rc.syncCallAppendEntries(ctx, req)
-	wrapper := utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
-		Resp: resp,
-		Err:  err,
-	}
-	return wrapper
-}
-
-// the context shall be timed out in election timeout period
-func (rc *InternalClientImpl) RequestVoteWithInfRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
+func (rc *peerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
 	requestID := common.GetRequestID(ctx)
 	rc.logger.Debug("send SendRequestVote",
-		zap.String("to", rc.String()),
 		zap.Any("request", req),
 		zap.String("requestID", requestID))
-	out := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], 1)
-
-	retriedRPC := func() {
-		singleResChan := rc.asyncCallRequestVote(ctx, req)
-		for {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, common.ContextDoneErr()
+		default:
+			singleResChan := rc.asyncCallRequestVote(ctx, req)
 			select {
 			case <-ctx.Done():
-				out <- utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-					Err: fmt.Errorf("%s", "election timeout to receive any non-error response")}
-				return
+				return nil, common.ContextDoneErr()
 			case resp := <-singleResChan:
 				if resp.Err != nil {
+					rc.logger.Error("need retry, RPC error:",
+						zap.Error(resp.Err),
+						zap.String("requestID", requestID))
 					deadline, ok := ctx.Deadline()
 					if ok && time.Until(deadline) < rc.cfg.GetRPCDeadlineMargin() {
-						out <- utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-							Err: fmt.Errorf("%s", "election timeout to receive any non-error response")}
-						return
+						return nil, resp.Err
 					} else {
-						rc.logger.Error("need retry, RPC error:",
-							zap.String("to", rc.String()),
-							zap.Error(resp.Err),
-							zap.String("requestID", requestID))
-						singleResChan = rc.asyncCallRequestVote(ctx, req)
 						continue
 					}
 				} else {
-					out <- resp
-					return
+					return resp.Resp, nil
 				}
 			}
 		}
 	}
-	go retriedRPC()
-	return out
 }
 
-func (rc *InternalClientImpl) asyncCallRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
+// broadcast timeout is used in this caller
+func (rc *peerClient) asyncCallRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
 	singleResChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], 1) // must be buffered
 	go func() {
-		resp, err := rc.syncCallRequestVote(ctx, req)
+		resp, err := rc.rawClient.RequestVote(ctx, req)
+		if err != nil {
+			requestID := common.GetRequestID(ctx)
+			rc.logger.Error("single RPC error in SendAppendEntries:",
+				zap.Error(err),
+				zap.String("requestID", requestID))
+		}
 		wrapper := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 			Resp: resp,
 			Err:  err,
@@ -155,32 +132,71 @@ func (rc *InternalClientImpl) asyncCallRequestVote(ctx context.Context, req *rpc
 	return singleResChan
 }
 
-// should be called when ctx.deadline can handle the rpc timeout
-func (rc *InternalClientImpl) syncCallAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
-	resp, err := rc.rawClient.AppendEntries(ctx, req)
-	if err != nil {
+func (rc *peerClient) AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
+	const maxRetries = 3
+	var lastErr error
+
+	for i := 0; i < maxRetries; i++ {
+		resp, err := rc.rawClient.AppendEntries(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+
+		lastErr = err
 		requestID := common.GetRequestID(ctx)
-		rc.logger.Error("single RPC error in SendAppendEntries:",
+		rc.logger.Error("RPC error in AppendEntries, will retry:",
 			zap.Error(err),
-			zap.String("requestID", requestID))
+			zap.String("requestID", requestID),
+			zap.Int("attempt", i+1),
+			zap.Int("maxRetries", maxRetries))
+
+		// Check if we should continue retrying
+		select {
+		case <-ctx.Done():
+			return nil, common.ContextDoneErr()
+		default:
+			// Continue to next retry
+		}
 	}
-	return resp, err
+	return nil, lastErr
 }
 
-// should be called when ctx.deadline can handle the rpc timeout
-func (rc *InternalClientImpl) syncCallRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
-	resp, err := rc.rawClient.RequestVote(ctx, req)
-	if err != nil {
-		requestID := common.GetRequestID(ctx)
-		rc.logger.Error("single RPC error in SendAppendEntries:",
-			zap.String("to", rc.String()),
-			zap.Error(err),
-			zap.String("requestID", requestID))
-	}
-	return resp, err
+// timeoutClientInterceptor enforces a timeout on RPC calls. This interceptor is used
+// in NewRobustClient() when creating the gRPC client connection:
+//
+//	conn, err := grpc.Dial(
+//		address,
+//		grpc.WithTransportCredentials(insecure.NewCredentials()),
+//		grpc.WithUnaryInterceptor(chainUnaryInterceptors(
+//			rc.timeoutClientInterceptor,
+//			rc.loggerInterceptor,
+//		)),
+//	)
+func (rc *peerClient) timeoutClientInterceptor(
+	ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+
+	requestID := uuid.New().String()
+	start := time.Now()
+	rc.logger.Debug("Starting RPC call",
+		zap.String("method", method),
+		zap.String("requestID", requestID))
+
+	rpcTimeout := rc.cfg.GetRPCRequestTimeout()
+	singleCallCtx, singleCallCancel := context.WithTimeout(ctx, rpcTimeout)
+	defer singleCallCancel()
+
+	err := invoker(singleCallCtx, method, req, reply, cc, opts...)
+
+	end := time.Now()
+	rc.logger.Debug("Finished RPC call",
+		zap.String("method", method),
+		zap.String("requestID", requestID),
+		zap.Duration("duration", end.Sub(start)))
+
+	return err
 }
 
-func (rc *InternalClientImpl) loggerInterceptor(
+func (rc *peerClient) loggerInterceptor(
 	ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 
 	ctx, requestID := common.SetClientRequestID(ctx)
@@ -207,30 +223,5 @@ func (rc *InternalClientImpl) loggerInterceptor(
 			zap.Error(err),
 			zap.String("requestID", requestID))
 	}
-	return err
-}
-
-func (rc *InternalClientImpl) timeoutClientInterceptor(
-	ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-
-	// todo: add trace all together and remove this temporary solution
-	requestID := uuid.New().String()
-	start := time.Now()
-	rc.logger.Debug("Starting RPC call",
-		zap.String("method", method),
-		zap.String("requestID", requestID))
-
-	rpcTimeout := rc.cfg.GetRPCRequestTimeout()
-	singleCallCtx, singleCallCancel := context.WithTimeout(ctx, rpcTimeout)
-	defer singleCallCancel()
-
-	err := invoker(singleCallCtx, method, req, reply, cc, opts...)
-
-	end := time.Now()
-	rc.logger.Debug("Finished RPC call",
-		zap.String("method", method),
-		zap.String("requestID", requestID),
-		zap.Duration("duration", end.Sub(start)))
-
 	return err
 }
