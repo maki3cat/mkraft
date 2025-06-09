@@ -77,7 +77,7 @@ func TestNewMembershipMgrWithStaticConfig(t *testing.T) {
 			cfg := &common.Config{
 				Membership: tt.membership,
 			}
-			mgr, err := NewMembershipMgrWithStaticConfig(logger, cfg)
+			mgr, err := NewMembershipWithStaticConfig(logger, cfg)
 
 			if tt.expectedError {
 				if err == nil {
