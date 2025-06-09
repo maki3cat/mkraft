@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/peers"
@@ -11,6 +12,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// algorithm about consensus
+func calculateIfMajorityMet(total, peerVoteAccumulated int) bool {
+	return (peerVoteAccumulated + 1) >= total/2+1
+}
+
+func calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed int) bool {
+	majority := total/2 + 1
+	majorityNeeded := majority - 1
+	needed := majorityNeeded - peerVoteAccumulated
+	possibleRespondant := peersCount - voteFailed - peerVoteAccumulated
+	return possibleRespondant < needed
+}
+
+// peers communication to get the consensus
 type AppendEntriesConsensusResp struct {
 	Term    uint32
 	Success bool
@@ -19,8 +34,12 @@ type AppendEntriesConsensusResp struct {
 type MajorityRequestVoteResp struct {
 	Term        uint32
 	VoteGranted bool
+	Err         error
 }
 
+// synchronous call to until the a consensus is reached or is failed
+// it contains forever retry mechanism, so
+// !!! the ctx shall be Done within the election timeout
 func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
 
 	requestID := common.GetRequestID(ctx)
@@ -42,16 +61,25 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 
 	peersCount := len(peerClients)
 	resChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
+
+	// check deadline and create rpc timeout
+	deadline, deadlineSet := ctx.Deadline()
+	if !deadlineSet {
+		return nil, errors.New("deadline is not set")
+	}
+	rpcTimtout := time.Until(deadline)
+	if rpcTimtout <= 0 {
+		return nil, errors.New("deadline is in the past")
+	}
+
 	for _, member := range peerClients {
 		// FAN-OUT
-		// maki: todo topic for go gynastics
 		go func() {
 			memberHandle := member
-			timeout := c.cfg.GetElectionTimeout()
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
+			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
+			defer rpcCancel()
 			// FAN-IN
-			resChan <- <-memberHandle.SendRequestVoteWithRetries(ctxWithTimeout, request)
+			resChan <- <-memberHandle.RequestVoteWithInfRetries(rpcCtx, request)
 		}()
 	}
 
@@ -68,7 +96,7 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 					zap.Int("voteFailed", voteFailed),
 					zap.String("requestID", requestID))
 				if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed) {
-					return nil, errors.New("majority of nodes failed to respond")
+					return nil, common.ErrMajorityNotMet
 				} else {
 					continue
 				}
@@ -94,24 +122,27 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 					} else {
 						voteFailed++
 						if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed) {
-							return nil, errors.New("majority of nodes failed to respond")
+							return nil, common.ErrMajorityNotMet
 						}
 					}
 				}
 				if resp.Term < request.Term {
-					panic("this should not happen, the consensus algorithm is not implmented correctly")
+					return nil, common.ErrInvariantsBroken
 				}
 			}
 		case <-ctx.Done():
-			return nil, errors.New("context done")
+			return nil, common.ErrContextDone
 		}
 	}
-	panic("this should not happen, the consensus algorithm is not implmented correctly")
+	return nil, common.ErrInvariantsBroken
 }
 
-// also update the peer index in this method
+// goroutine management:this method expands goroutines to the number of peers,
+// but since this system handles appendEnrines once a time in a serial way
+// I don't think we need to worry about the explosion of goroutines
 func (n *Node) ConsensusAppendEntries(
 	ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error) {
+
 	requestID := common.GetRequestID(ctx)
 	total := n.membership.GetMemberCount()
 	peerClients, err := n.membership.GetAllPeerClientsV2()
@@ -121,29 +152,44 @@ func (n *Node) ConsensusAppendEntries(
 			zap.String("requestID", requestID))
 		return nil, err
 	}
+
+	// check if registered peers are enough to get the consensus
 	if !calculateIfMajorityMet(total, len(peerClients)) {
-		n.logger.Error("not enough peer clients found",
-			zap.String("requestID", requestID))
-		return nil, errors.New("not enough peer clients found")
+		n.logger.Error("not enough peer clients registered for consensus", zap.String("requestID", requestID))
+		return nil, common.ErrNotEnoughPeersForConsensus
 	}
 
+	// in paralelel, send append entries to all peers
 	allRespChan := make(chan utils.RPCRespWrapper[*rpc.AppendEntriesResponse], len(peerClients))
+
+	// check deadline and create rpc timeout
+	deadline, deadlineSet := ctx.Deadline()
+	if !deadlineSet {
+		return nil, errors.New("deadline is not set")
+	}
+	rpcTimtout := time.Until(deadline)
+	if rpcTimtout <= 0 {
+		return nil, errors.New("deadline is in the past")
+	}
+
 	for nodeID, member := range peerClients {
 		// FAN-OUT
 		go func(nodeID string, client peers.InternalClientIface) {
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetElectionTimeout())
-			defer cancel()
+
+			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
+			defer rpcCancel()
+
 			req := peerReq[nodeID]
-			// FAN-IN
-			resp := client.SendAppendEntries(ctxWithTimeout, req)
+			resp := client.SendAppendEntries(rpcCtx, req)
 			if resp.Err == nil {
 				if resp.Resp.Success {
-					n.incrementPeersNextIndexOnSuccess(nodeID, uint64(len(req.Entries)))
+					// update the peers' index
+					n.incrPeerIdxAfterLogRepli(nodeID, uint64(len(req.Entries)))
 				} else {
-					n.decrementPeersNextIndexOnFailure(nodeID)
+					n.decrPeerIdxAfterLogRepli(nodeID)
 				}
 			}
-			// update the peers' index
+			// FAN-IN
 			allRespChan <- resp
 		}(nodeID, member)
 	}
@@ -208,16 +254,4 @@ func (n *Node) ConsensusAppendEntries(
 		}
 	}
 	return nil, errors.New("this should not happen, the consensus algorithm is not implmented correctly")
-}
-
-func calculateIfMajorityMet(total, peerVoteAccumulated int) bool {
-	return (peerVoteAccumulated + 1) >= total/2+1
-}
-
-func calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed int) bool {
-	majority := total/2 + 1
-	majorityNeeded := majority - 1
-	needed := majorityNeeded - peerVoteAccumulated
-	possibleRespondant := peersCount - voteFailed - peerVoteAccumulated
-	return possibleRespondant < needed
 }

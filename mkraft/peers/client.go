@@ -21,9 +21,11 @@ var _ InternalClientIface = (*InternalClientImpl)(nil)
 type InternalClientIface interface {
 
 	// send request vote is keep retrying until the context is done or the response is received
-	SendRequestVoteWithRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse]
+	// todo: make sure this retry is infinite until cancel the context or the response is received
+	RequestVoteWithInfRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse]
 
 	// send append entries is one simple sync rpc call with rpc timeout
+	// todo: make sure this retry is infinite until cancel the context or the response is received
 	SendAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) utils.RPCRespWrapper[*rpc.AppendEntriesResponse]
 
 	SayHello(ctx context.Context, req *rpc.HelloRequest) (*rpc.HelloReply, error)
@@ -98,7 +100,7 @@ func (rc *InternalClientImpl) SendAppendEntries(ctx context.Context, req *rpc.Ap
 }
 
 // the context shall be timed out in election timeout period
-func (rc *InternalClientImpl) SendRequestVoteWithRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
+func (rc *InternalClientImpl) RequestVoteWithInfRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
 	requestID := common.GetRequestID(ctx)
 	rc.logger.Debug("send SendRequestVote",
 		zap.String("to", rc.String()),

@@ -56,6 +56,20 @@ func (mr *MockInternalClientIfaceMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockInternalClientIface)(nil).Close))
 }
 
+// RequestVoteWithInfRetries mocks base method.
+func (m *MockInternalClientIface) RequestVoteWithInfRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequestVoteWithInfRetries", ctx, req)
+	ret0, _ := ret[0].(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse])
+	return ret0
+}
+
+// RequestVoteWithInfRetries indicates an expected call of RequestVoteWithInfRetries.
+func (mr *MockInternalClientIfaceMockRecorder) RequestVoteWithInfRetries(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestVoteWithInfRetries", reflect.TypeOf((*MockInternalClientIface)(nil).RequestVoteWithInfRetries), ctx, req)
+}
+
 // SayHello mocks base method.
 func (m *MockInternalClientIface) SayHello(ctx context.Context, req *rpc.HelloRequest) (*rpc.HelloReply, error) {
 	m.ctrl.T.Helper()
@@ -83,20 +97,6 @@ func (m *MockInternalClientIface) SendAppendEntries(ctx context.Context, req *rp
 func (mr *MockInternalClientIfaceMockRecorder) SendAppendEntries(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendAppendEntries", reflect.TypeOf((*MockInternalClientIface)(nil).SendAppendEntries), ctx, req)
-}
-
-// SendRequestVoteWithRetries mocks base method.
-func (m *MockInternalClientIface) SendRequestVoteWithRetries(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendRequestVoteWithRetries", ctx, req)
-	ret0, _ := ret[0].(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse])
-	return ret0
-}
-
-// SendRequestVoteWithRetries indicates an expected call of SendRequestVoteWithRetries.
-func (mr *MockInternalClientIfaceMockRecorder) SendRequestVoteWithRetries(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendRequestVoteWithRetries", reflect.TypeOf((*MockInternalClientIface)(nil).SendRequestVoteWithRetries), ctx, req)
 }
 
 // String mocks base method.

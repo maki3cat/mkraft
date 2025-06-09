@@ -115,17 +115,17 @@ func (n *Node) RunAsCandidate(ctx context.Context) {
 	n.noleaderApplySignalCh = make(chan bool, n.cfg.GetRaftNodeRequestBufferSize())
 	go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
-	electionTicker := time.NewTicker(n.cfg.GetElectionTimeout())
 
 	defer func() {
 		workerCancel()
 		workerWaitGroup.Wait() // cancel only closes the Done channel, it doesn't wait for the worker to exit
 		n.logger.Info("candidate worker exited successfully")
 		n.sem.Release(1)
-		defer electionTicker.Stop()
 	}()
 
-	consensusChan := n.candidateAsyncDoElection(ctx)
+	// there is no tikcer in this cancdiate state, and we use this election return as a de facto ticker
+	consensusChan := n.asyncReElect(ctx)
+
 	for {
 		currentTerm := n.getCurrentTerm()
 		select {
@@ -138,7 +138,14 @@ func (n *Node) RunAsCandidate(ctx context.Context) {
 				case <-ctx.Done():
 					n.logger.Warn("raft node's main context done, exiting")
 					return
-				case response := <-consensusChan: // some response from last election
+				case response, ok := <-consensusChan: // some response from last election
+
+					if !ok || response == nil {
+						n.logger.Error("error in consensusChan, try to re-elect after another election timeout")
+						time.Sleep(n.cfg.GetElectionTimeout())
+						continue
+					}
+
 					if response.VoteGranted {
 						n.SetNodeState(StateLeader)
 						n.cleanupApplyLogsBeforeToLeader()
@@ -161,13 +168,9 @@ func (n *Node) RunAsCandidate(ctx context.Context) {
 							n.logger.Warn(
 								"not enough votes, re-elect again",
 								zap.Int("term", int(currentTerm)), zap.String("nId", n.NodeId))
+							consensusChan = n.asyncReElect(ctx)
 						}
 					}
-				case <-electionTicker.C:
-					// last election reaches no decisive result, either no response or not enough votes
-					// we re-elect
-					consensusChan = n.candidateAsyncDoElection(ctx)
-
 				case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
 					if !req.IsTimeout.Load() {
 						n.logger.Warn("request vote is timeout")
@@ -310,30 +313,33 @@ func (n *Node) noleaderHandleAppendEntries(ctx context.Context, req *rpc.AppendE
 
 // the implementation:
 // triggers peerCnt + 1 goroutines for fan-out rpc and fan-in the responses
-func (node *Node) candidateAsyncDoElection(ctx context.Context) chan *MajorityRequestVoteResp {
+func (n *Node) asyncReElect(ctx context.Context) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	consensusChan := make(chan *MajorityRequestVoteResp, 1)
+	timeout := n.cfg.GetElectionTimeout()
+	electionCtx, electionCancel := context.WithTimeout(ctx, timeout)
+	defer electionCancel()
 
-	err := node.updateCurrentTermAndVotedForAsCandidate(false)
+	err := n.updateCurrentTermAndVotedForAsCandidate(false)
 	if err != nil {
-		// todo: probably we shall recover in the man runAs??
-		node.logger.Error(
+		n.logger.Error(
 			"this shouldn't happen, bugs in updateCurrentTermAndVotedForAsCandidate",
 			zap.String("requestID", requestID), zap.Error(err))
-		panic(err) // critical error, cannot continue
+		close(consensusChan)
 	}
 
+	// todo: testing should be called cancelled 1) the node degrade to folower; 2) the node starts a new election;
+	// maki: is this a good pattern? this consensus actually has a timeout, so can be combined
 	go func() {
 		req := &rpc.RequestVoteRequest{
-			Term:        node.getCurrentTerm(),
-			CandidateId: node.NodeId,
+			Term:        n.getCurrentTerm(),
+			CandidateId: n.NodeId,
 		}
-		resp, err := node.ConsensusRequestVote(ctx, req)
+		resp, err := n.ConsensusRequestVote(electionCtx, req)
 		if err != nil {
-			node.logger.Error(
-				"error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
-			return
+			n.logger.Error("error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
+			close(consensusChan)
 		} else {
 			consensusChan <- resp
 		}
