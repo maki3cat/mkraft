@@ -15,32 +15,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockMembershipMgrIface is a mock of MembershipMgrIface interface.
-type MockMembershipMgrIface struct {
+// MockMembership is a mock of Membership interface.
+type MockMembership struct {
 	ctrl     *gomock.Controller
-	recorder *MockMembershipMgrIfaceMockRecorder
+	recorder *MockMembershipMockRecorder
 	isgomock struct{}
 }
 
-// MockMembershipMgrIfaceMockRecorder is the mock recorder for MockMembershipMgrIface.
-type MockMembershipMgrIfaceMockRecorder struct {
-	mock *MockMembershipMgrIface
+// MockMembershipMockRecorder is the mock recorder for MockMembership.
+type MockMembershipMockRecorder struct {
+	mock *MockMembership
 }
 
-// NewMockMembershipMgrIface creates a new mock instance.
-func NewMockMembershipMgrIface(ctrl *gomock.Controller) *MockMembershipMgrIface {
-	mock := &MockMembershipMgrIface{ctrl: ctrl}
-	mock.recorder = &MockMembershipMgrIfaceMockRecorder{mock}
+// NewMockMembership creates a new mock instance.
+func NewMockMembership(ctrl *gomock.Controller) *MockMembership {
+	mock := &MockMembership{ctrl: ctrl}
+	mock.recorder = &MockMembershipMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMembershipMgrIface) EXPECT() *MockMembershipMgrIfaceMockRecorder {
+func (m *MockMembership) EXPECT() *MockMembershipMockRecorder {
 	return m.recorder
 }
 
 // GetAllPeerClients mocks base method.
-func (m *MockMembershipMgrIface) GetAllPeerClients() ([]PeerClient, error) {
+func (m *MockMembership) GetAllPeerClients() ([]PeerClient, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllPeerClients")
 	ret0, _ := ret[0].([]PeerClient)
@@ -49,13 +49,13 @@ func (m *MockMembershipMgrIface) GetAllPeerClients() ([]PeerClient, error) {
 }
 
 // GetAllPeerClients indicates an expected call of GetAllPeerClients.
-func (mr *MockMembershipMgrIfaceMockRecorder) GetAllPeerClients() *gomock.Call {
+func (mr *MockMembershipMockRecorder) GetAllPeerClients() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPeerClients", reflect.TypeOf((*MockMembershipMgrIface)(nil).GetAllPeerClients))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPeerClients", reflect.TypeOf((*MockMembership)(nil).GetAllPeerClients))
 }
 
 // GetAllPeerClientsV2 mocks base method.
-func (m *MockMembershipMgrIface) GetAllPeerClientsV2() (map[string]PeerClient, error) {
+func (m *MockMembership) GetAllPeerClientsV2() (map[string]PeerClient, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllPeerClientsV2")
 	ret0, _ := ret[0].(map[string]PeerClient)
@@ -64,13 +64,13 @@ func (m *MockMembershipMgrIface) GetAllPeerClientsV2() (map[string]PeerClient, e
 }
 
 // GetAllPeerClientsV2 indicates an expected call of GetAllPeerClientsV2.
-func (mr *MockMembershipMgrIfaceMockRecorder) GetAllPeerClientsV2() *gomock.Call {
+func (mr *MockMembershipMockRecorder) GetAllPeerClientsV2() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPeerClientsV2", reflect.TypeOf((*MockMembershipMgrIface)(nil).GetAllPeerClientsV2))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPeerClientsV2", reflect.TypeOf((*MockMembership)(nil).GetAllPeerClientsV2))
 }
 
 // GetAllPeerNodeIDs mocks base method.
-func (m *MockMembershipMgrIface) GetAllPeerNodeIDs() ([]string, error) {
+func (m *MockMembership) GetAllPeerNodeIDs() ([]string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllPeerNodeIDs")
 	ret0, _ := ret[0].([]string)
@@ -79,13 +79,13 @@ func (m *MockMembershipMgrIface) GetAllPeerNodeIDs() ([]string, error) {
 }
 
 // GetAllPeerNodeIDs indicates an expected call of GetAllPeerNodeIDs.
-func (mr *MockMembershipMgrIfaceMockRecorder) GetAllPeerNodeIDs() *gomock.Call {
+func (mr *MockMembershipMockRecorder) GetAllPeerNodeIDs() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPeerNodeIDs", reflect.TypeOf((*MockMembershipMgrIface)(nil).GetAllPeerNodeIDs))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPeerNodeIDs", reflect.TypeOf((*MockMembership)(nil).GetAllPeerNodeIDs))
 }
 
 // GetMemberCount mocks base method.
-func (m *MockMembershipMgrIface) GetMemberCount() int {
+func (m *MockMembership) GetMemberCount() int {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetMemberCount")
 	ret0, _ := ret[0].(int)
@@ -93,19 +93,19 @@ func (m *MockMembershipMgrIface) GetMemberCount() int {
 }
 
 // GetMemberCount indicates an expected call of GetMemberCount.
-func (mr *MockMembershipMgrIfaceMockRecorder) GetMemberCount() *gomock.Call {
+func (mr *MockMembershipMockRecorder) GetMemberCount() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMemberCount", reflect.TypeOf((*MockMembershipMgrIface)(nil).GetMemberCount))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMemberCount", reflect.TypeOf((*MockMembership)(nil).GetMemberCount))
 }
 
 // GracefulStop mocks base method.
-func (m *MockMembershipMgrIface) GracefulStop() {
+func (m *MockMembership) GracefulStop() {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "GracefulStop")
 }
 
 // GracefulStop indicates an expected call of GracefulStop.
-func (mr *MockMembershipMgrIfaceMockRecorder) GracefulStop() *gomock.Call {
+func (mr *MockMembershipMockRecorder) GracefulStop() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GracefulStop", reflect.TypeOf((*MockMembershipMgrIface)(nil).GracefulStop))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GracefulStop", reflect.TypeOf((*MockMembership)(nil).GracefulStop))
 }

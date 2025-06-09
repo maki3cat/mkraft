@@ -23,7 +23,7 @@ import (
 )
 
 func NewServer(cfg common.ConfigIface, logger *zap.Logger) (*Server, error) {
-	membershipMgr, err := peers.NewMembershipMgrWithStaticConfig(logger, cfg)
+	membershipMgr, err := peers.NewMembershipWithStaticConfig(logger, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ type Server struct {
 	logger     *zap.Logger
 	cfg        common.ConfigIface
 	node       node.NodeIface
-	membership peers.MembershipMgrIface
+	membership peers.Membership
 
 	grpcServer *grpc.Server
 	handler    *mkraft.Handlers

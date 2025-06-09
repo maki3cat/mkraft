@@ -57,7 +57,7 @@ func NewNodeIface(
 	nodeId string,
 	cfg common.ConfigIface,
 	logger *zap.Logger,
-	membership peers.MembershipMgrIface,
+	membership peers.Membership,
 	statemachine plugs.StateMachineIface,
 	raftLog log.RaftLogsIface,
 ) NodeIface {
@@ -68,7 +68,7 @@ func NewNode(
 	nodeId string,
 	cfg common.ConfigIface,
 	logger *zap.Logger,
-	membership peers.MembershipMgrIface,
+	membership peers.Membership,
 	statemachine plugs.StateMachineIface,
 	raftLog log.RaftLogsIface,
 ) *Node {
@@ -128,7 +128,7 @@ func NewNode(
 
 // the Raft Server Node
 type Node struct {
-	membership peers.MembershipMgrIface // managed by the outside overarching server
+	membership peers.Membership // managed by the outside overarching server
 
 	raftLog      log.RaftLogsIface // required, persistent
 	cfg          common.ConfigIface
