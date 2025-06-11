@@ -260,13 +260,14 @@ func (n *Node) ConsensusAppendEntries(
 						"invairant failed, smaller term is not overwritten by larger term",
 						zap.String("response", resp.String()),
 						zap.String("requestID", requestID))
-					panic("this should not happen, the consensus algorithm is not implmented correctly")
+					n.logger.Error("this should not happen, the consensus algorithm is not implmented correctly")
+					return nil, common.ErrInvariantsBroken
 				}
 			}
 		case <-ctx.Done():
 			n.logger.Info("context canceled",
 				zap.String("requestID", requestID))
-			return nil, errors.New("context canceled")
+			return nil, common.ErrContextDone
 		}
 	}
 	return nil, errors.New("this should not happen, the consensus algorithm is not implmented correctly")

@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -586,10 +587,7 @@ func TestNode_ConsensusAppendEntries_HappyPath(t *testing.T) {
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
 
-			node := &Node{
-				membership: mockMembership,
-				logger:     zap.NewNop(),
-			}
+			node := getMockNode(mockMembership)
 
 			peerReqs := map[string]*rpc.AppendEntriesRequest{
 				"node2": {
@@ -650,6 +648,19 @@ func TestNode_ConsensusAppendEntries_HappyPath(t *testing.T) {
 	}
 }
 
+func getMockNode(mockMembership *peers.MockMembership) *Node {
+	node := &Node{
+		membership:  mockMembership,
+		logger:      zap.NewNop(),
+		stateRWLock: &sync.RWMutex{},
+		commitIndex: 0,
+		lastApplied: 0,
+		nextIndex:   map[string]uint64{},
+		matchIndex:  map[string]uint64{},
+	}
+	return node
+}
+
 func TestNode_ConsensusAppendEntries_HigherTerm(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -677,10 +688,7 @@ func TestNode_ConsensusAppendEntries_HigherTerm(t *testing.T) {
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
 
-			node := &Node{
-				membership: mockMembership,
-				logger:     zap.NewNop(),
-			}
+			node := getMockNode(mockMembership)
 
 			peerReqs := map[string]*rpc.AppendEntriesRequest{
 				"node2": {
@@ -764,10 +772,7 @@ func TestNode_ConsensusAppendEntries_MembershipError(t *testing.T) {
 
 			mockMembership := peers.NewMockMembership(ctrl)
 
-			node := &Node{
-				membership: mockMembership,
-				logger:     zap.NewNop(),
-			}
+			node := getMockNode(mockMembership)
 
 			peerReqs := map[string]*rpc.AppendEntriesRequest{
 				"node2": {
@@ -824,10 +829,7 @@ func TestNode_ConsensusAppendEntries_ContextCancelled(t *testing.T) {
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
 
-			node := &Node{
-				membership: mockMembership,
-				logger:     zap.NewNop(),
-			}
+			node := getMockNode(mockMembership)
 
 			peerReqs := map[string]*rpc.AppendEntriesRequest{
 				"node2": {
@@ -878,9 +880,56 @@ func TestNode_ConsensusAppendEntries_ContextCancelled(t *testing.T) {
 			if tt.sleep {
 				time.Sleep(100 * time.Millisecond)
 			}
-			if err == nil || !errors.Is(err, context.Canceled) {
+			if err == nil || !errors.Is(err, common.ErrContextDone) {
 				t.Errorf("ConsensusAppendEntries() error = %v, want context canceled", err)
 			}
 		})
+	}
+}
+
+func TestConsensusAppendEntries_SmallerTermResponse(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockMembership := peers.NewMockMembership(ctrl)
+	mockClient := peers.NewMockPeerClient(ctrl)
+
+	node := getMockNode(mockMembership)
+
+	peerReqs := map[string]*rpc.AppendEntriesRequest{
+		"node2": {
+			Term:         2, // Current term is 2
+			LeaderId:     "node1",
+			PrevLogIndex: 0,
+			PrevLogTerm:  0,
+			Entries:      []*rpc.LogEntry{{Data: []byte("test")}},
+			LeaderCommit: 0,
+		},
+	}
+
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+
+	mockMembership.EXPECT().GetMemberCount().Return(3)
+	mockMembership.EXPECT().GetAllPeerClientsV2().Return(map[string]peers.PeerClient{
+		"node2": mockClient,
+	}, nil)
+
+	// Mock response with term smaller than current term
+	mockClient.EXPECT().AppendEntriesWithRetry(gomock.Any(), peerReqs["node2"]).
+		Return(&rpc.AppendEntriesResponse{
+			Term:    1, // Response term is 1, smaller than current term 2
+			Success: true,
+		}, nil)
+
+	resp, err := node.ConsensusAppendEntries(ctx, peerReqs, 2)
+
+	if err == nil || !errors.Is(err, common.ErrInvariantsBroken) {
+		t.Errorf("ConsensusAppendEntries() error = %v, want ErrInvariantsBroken", err)
+	}
+
+	if resp != nil {
+		t.Errorf("ConsensusAppendEntries() response = %v, want nil", resp)
 	}
 }
