@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/maki3cat/mkraft/common"
 	"go.uber.org/zap"
 )
 
@@ -12,6 +13,7 @@ import (
 // implementation gap: the commitIdx and lastApplied shall be persisted in implementation
 // if not, if all nodes shutdown, the commitIdx and lastApplied will be lost
 func (n *Node) getIdxFileName() string {
+	// todo: add a data directory to store this file and raft logs
 	return "index.rft"
 }
 
@@ -76,18 +78,32 @@ func (n *Node) getCommitIdx() uint64 {
 // not sure this is a good idea, but this design makes the implementation SIMPLE
 // todo: important
 // so we can prove this 1) test cases; 2) comparison with Hashicorp Raft implementation
-func (n *Node) incrementCommitIdx(numberOfCommand uint64) {
+func (n *Node) incrementCommitIdx(numberOfCommand uint64) error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	n.commitIndex = n.commitIndex + numberOfCommand
-	n.unsafeSaveIdx()
+	if err := n.unsafeCheckIndexIntegrity(); err != nil {
+		return err
+	}
+	return n.unsafeSaveIdx()
 }
 
-func (n *Node) incrementLastApplied(numberOfCommand uint64) {
+func (n *Node) incrementLastApplied(numberOfCommand uint64) error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	n.lastApplied = n.lastApplied + numberOfCommand
-	n.unsafeSaveIdx()
+	err := n.unsafeCheckIndexIntegrity()
+	if err != nil {
+		return err
+	}
+	return n.unsafeSaveIdx()
+}
+
+func (n *Node) unsafeCheckIndexIntegrity() error {
+	if n.commitIndex < n.lastApplied {
+		return common.ErrInvariantsBroken
+	}
+	return nil
 }
 
 // section2: for indices of leaders, nextIndex/matchIndex

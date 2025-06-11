@@ -91,13 +91,22 @@ func TestIncrementCommitIdx(t *testing.T) {
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
 
 	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
-	node.commitIndex = 5
+	defer os.Remove(node.getIdxFileName())
 
-	node.incrementCommitIdx(3)
-	assert.Equal(t, uint64(8), node.commitIndex)
+	t.Run("successful increment", func(t *testing.T) {
+		node.commitIndex = 5
+		node.lastApplied = 3
+		err := node.incrementCommitIdx(3)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(8), node.commitIndex)
+	})
 
-	// Cleanup any created files
-	os.Remove(node.getIdxFileName())
+	t.Run("breaks invariant", func(t *testing.T) {
+		node.commitIndex = 3
+		node.lastApplied = 5
+		err := node.incrementCommitIdx(1)
+		assert.ErrorIs(t, err, common.ErrInvariantsBroken)
+	})
 }
 
 func TestIncrementLastApplied(t *testing.T) {
@@ -110,13 +119,22 @@ func TestIncrementLastApplied(t *testing.T) {
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
 
 	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
-	node.lastApplied = 5
+	defer os.Remove(node.getIdxFileName())
 
-	node.incrementLastApplied(2)
-	assert.Equal(t, uint64(7), node.lastApplied)
+	t.Run("successful increment", func(t *testing.T) {
+		node.commitIndex = 10
+		node.lastApplied = 5
+		err := node.incrementLastApplied(2)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(7), node.lastApplied)
+	})
 
-	// Cleanup any created files
-	os.Remove(node.getIdxFileName())
+	t.Run("breaks invariant", func(t *testing.T) {
+		node.commitIndex = 5
+		node.lastApplied = 3
+		err := node.incrementLastApplied(3)
+		assert.ErrorIs(t, err, common.ErrInvariantsBroken)
+	})
 }
 
 func TestIncrementPeersNextIndexOnSuccess(t *testing.T) {
