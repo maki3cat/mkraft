@@ -40,6 +40,7 @@ type MajorityRequestVoteResp struct {
 // synchronous call to until the a consensus is reached or is failed
 // it contains forever retry mechanism, so
 // !!! the ctx shall be Done within the election timeout
+// !!! This is shortcut method, it returns when the consensus is reached or failed without waiting for all the responses
 func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
 
 	requestID := common.GetRequestID(ctx)
@@ -65,11 +66,11 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 	// check deadline and create rpc timeout
 	deadline, deadlineSet := ctx.Deadline()
 	if !deadlineSet {
-		return nil, errors.New("deadline is not set")
+		return nil, common.ErrDeadlineNotSet
 	}
 	rpcTimtout := time.Until(deadline)
 	if rpcTimtout <= 0 {
-		return nil, errors.New("deadline is in the past")
+		return nil, common.ErrDeadlineInThePast
 	}
 
 	for _, member := range peerClients {
@@ -170,11 +171,11 @@ func (n *Node) ConsensusAppendEntries(
 	// check deadline and create rpc timeout
 	deadline, deadlineSet := ctx.Deadline()
 	if !deadlineSet {
-		return nil, errors.New("deadline is not set")
+		return nil, common.ErrDeadlineNotSet
 	}
 	rpcTimtout := time.Until(deadline)
 	if rpcTimtout <= 0 {
-		return nil, errors.New("deadline is in the past")
+		return nil, common.ErrDeadlineInThePast
 	}
 
 	for nodeID, member := range peerClients {

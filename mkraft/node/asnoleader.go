@@ -317,9 +317,6 @@ func (n *Node) asyncReElect(ctx context.Context) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	consensusChan := make(chan *MajorityRequestVoteResp, 1)
-	timeout := n.cfg.GetElectionTimeout()
-	electionCtx, electionCancel := context.WithTimeout(ctx, timeout)
-	defer electionCancel()
 
 	err := n.updateCurrentTermAndVotedForAsCandidate(false)
 	if err != nil {
@@ -330,7 +327,11 @@ func (n *Node) asyncReElect(ctx context.Context) chan *MajorityRequestVoteResp {
 	}
 
 	// todo: testing should be called cancelled 1) the node degrade to folower; 2) the node starts a new election;
-	// maki: is this a good pattern? this consensus actually has a timeout, so can be combined
+	timeout := n.cfg.GetElectionTimeout()
+	electionCtx, _ := context.WithTimeout(ctx, timeout)
+	// defer electionCancel() // this is not needed, because the ConsensusRequestVote is a shortcut method
+	// and the ctx is called cancelled when the candidate shall degrade to follower
+
 	go func() {
 		req := &rpc.RequestVoteRequest{
 			Term:        n.getCurrentTerm(),

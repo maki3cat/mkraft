@@ -1,7 +1,16 @@
 package node
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
+
+	"github.com/maki3cat/mkraft/common"
+	"github.com/maki3cat/mkraft/mkraft/peers"
+	"github.com/maki3cat/mkraft/rpc"
+	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
 )
 
 func TestCalculateIfMajorityMet(t *testing.T) {
@@ -121,6 +130,426 @@ func TestCalculateIfAlreadyFail(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := calculateIfAlreadyFail(tt.total, tt.peersCount, tt.peerVoteAccumulated, tt.voteFailed); got != tt.want {
 				t.Errorf("calculateIfAlreadyFail() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNode_ConsensusRequestVote_HappyPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+			mockClient1 := peers.NewMockPeerClient(ctrl)
+			mockClient2 := peers.NewMockPeerClient(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			req := &rpc.RequestVoteRequest{
+				Term:         1,
+				CandidateId:  "node1",
+				LastLogIndex: 0,
+				LastLogTerm:  0,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+
+			expectCall1 := mockClient1.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
+				Term:        1,
+				VoteGranted: true,
+			}, nil)
+			expectCall2 := mockClient2.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
+				Term:        1,
+				VoteGranted: true,
+			}, nil)
+
+			if tt.maxTimes > 0 {
+				expectCall1.MaxTimes(tt.maxTimes)
+				expectCall2.MaxTimes(tt.maxTimes)
+			}
+
+			resp, err := node.ConsensusRequestVote(ctx, req)
+			if err != nil {
+				t.Errorf("ConsensusRequestVote() error = %v", err)
+				return
+			}
+
+			if tt.sleep {
+				// wait for the goroutine to finish, because the ConsensusRequestVote is a shortcut method
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			if !resp.VoteGranted {
+				t.Errorf("ConsensusRequestVote() vote not granted")
+			}
+		})
+	}
+}
+
+func TestNode_ConsensusRequestVote_MajorityFail(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+			mockClient1 := peers.NewMockPeerClient(ctrl)
+			mockClient2 := peers.NewMockPeerClient(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			req := &rpc.RequestVoteRequest{
+				Term:         1,
+				CandidateId:  "node1",
+				LastLogIndex: 0,
+				LastLogTerm:  0,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+
+			expectCall1 := mockClient1.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
+				Term:        1,
+				VoteGranted: false,
+			}, nil)
+			expectCall2 := mockClient2.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
+				Term:        1,
+				VoteGranted: false,
+			}, nil)
+
+			if tt.maxTimes > 0 {
+				expectCall1.MaxTimes(tt.maxTimes)
+				expectCall2.MaxTimes(tt.maxTimes)
+			}
+
+			_, err := node.ConsensusRequestVote(ctx, req)
+			if tt.sleep {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if err != common.ErrMajorityNotMet {
+				t.Errorf("ConsensusRequestVote() error = %v, want %v", err, common.ErrMajorityNotMet)
+			}
+		})
+	}
+}
+
+func TestNode_ConsensusRequestVote_HigherTerm(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+			mockClient1 := peers.NewMockPeerClient(ctrl)
+			mockClient2 := peers.NewMockPeerClient(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			req := &rpc.RequestVoteRequest{
+				Term:         1,
+				CandidateId:  "node1",
+				LastLogIndex: 0,
+				LastLogTerm:  0,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+
+			expectCall1 := mockClient1.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
+				Term:        2, // Higher term
+				VoteGranted: false,
+			}, nil)
+			expectCall2 := mockClient2.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
+				Term:        2, // Higher term
+				VoteGranted: false,
+			}, nil)
+
+			if tt.maxTimes > 0 {
+				expectCall1.MaxTimes(tt.maxTimes)
+				expectCall2.MaxTimes(tt.maxTimes)
+			}
+
+			resp, err := node.ConsensusRequestVote(ctx, req)
+			if tt.sleep {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if err != nil {
+				t.Errorf("ConsensusRequestVote() error = %v", err)
+			}
+			if resp.Term != 2 || resp.VoteGranted {
+				t.Errorf("ConsensusRequestVote() expected term=2 voteGranted=false, got term=%d voteGranted=%v",
+					resp.Term, resp.VoteGranted)
+			}
+		})
+	}
+}
+
+func TestNode_ConsensusRequestVote_ContextCancelled(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+			mockClient1 := peers.NewMockPeerClient(ctrl)
+			mockClient2 := peers.NewMockPeerClient(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			req := &rpc.RequestVoteRequest{
+				Term:         1,
+				CandidateId:  "node1",
+				LastLogIndex: 0,
+				LastLogTerm:  0,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+
+			expectCall1 := mockClient1.EXPECT().RequestVoteWithRetry(gomock.Any(), req).
+				DoAndReturn(func(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
+					cancel() // Cancel context before responding
+					return nil, context.Canceled
+				})
+			expectCall2 := mockClient2.EXPECT().RequestVoteWithRetry(gomock.Any(), req).
+				DoAndReturn(func(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
+					cancel() // Cancel context before responding
+					return nil, context.Canceled
+				})
+
+			if tt.maxTimes > 0 {
+				expectCall1.MaxTimes(tt.maxTimes)
+				expectCall2.MaxTimes(tt.maxTimes)
+			}
+
+			_, err := node.ConsensusRequestVote(ctx, req)
+			if tt.sleep {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if err != common.ErrContextDone {
+				t.Errorf("ConsensusRequestVote() error = %v, want %v", err, common.ErrContextDone)
+			}
+		})
+	}
+}
+
+func TestNode_ConsensusRequestVote_MembershipError(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			req := &rpc.RequestVoteRequest{
+				Term:         1,
+				CandidateId:  "node1",
+				LastLogIndex: 0,
+				LastLogTerm:  0,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClients().Return(nil, errors.New("membership error"))
+
+			_, err := node.ConsensusRequestVote(ctx, req)
+			if tt.sleep {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if err == nil {
+				t.Error("ConsensusRequestVote() expected error, got nil")
+			}
+		})
+	}
+}
+func TestConsensusRequestVoteContext(t *testing.T) {
+	tests := []struct {
+		name        string
+		ctxTimeout  time.Duration
+		wantErr     error
+		setupMocks  func(*peers.MockMembership, *peers.MockPeerClient)
+		clientCount int
+	}{
+		{
+			name:       "context deadline not set",
+			ctxTimeout: 0,
+			wantErr:    common.ErrDeadlineNotSet,
+			setupMocks: func(mm *peers.MockMembership, mc *peers.MockPeerClient) {
+				mm.EXPECT().GetMemberCount().Return(3)
+				mm.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mc}, nil)
+			},
+			clientCount: 1,
+		},
+		{
+			name:       "context cancelled",
+			ctxTimeout: 100 * time.Millisecond,
+			wantErr:    common.ErrContextDone,
+			setupMocks: func(mm *peers.MockMembership, mc *peers.MockPeerClient) {
+				mm.EXPECT().GetMemberCount().Return(3)
+				mm.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mc}, nil)
+				mc.EXPECT().RequestVoteWithRetry(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
+						time.Sleep(200 * time.Millisecond)
+						return nil, nil
+					})
+			},
+			clientCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+			mockClient := peers.NewMockPeerClient(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			req := &rpc.RequestVoteRequest{
+				Term:         1,
+				CandidateId:  "node1",
+				LastLogIndex: 0,
+				LastLogTerm:  0,
+			}
+
+			var ctx context.Context
+			var cancel context.CancelFunc
+			if tt.ctxTimeout > 0 {
+				ctx, cancel = context.WithTimeout(context.Background(), tt.ctxTimeout)
+			} else {
+				ctx, cancel = context.WithCancel(context.Background())
+			}
+			defer cancel()
+
+			tt.setupMocks(mockMembership, mockClient)
+
+			_, err := node.ConsensusRequestVote(ctx, req)
+			if err != tt.wantErr {
+				t.Errorf("ConsensusRequestVote() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
