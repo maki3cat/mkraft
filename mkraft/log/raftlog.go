@@ -43,7 +43,7 @@ type CatchupLogs struct {
 	Entries      []*RaftLogEntry
 }
 
-func NewRaftLogsImplAndLoad(dataPath string, logger *zap.Logger, serde RaftSerdeIface) RaftLogs {
+func NewRaftLogsImplAndLoad(dataPath string, logger *zap.Logger, serde RaftSerde) RaftLogs {
 
 	filePath := filepath.Join(dataPath, "raft.log")
 	if err := os.MkdirAll(dataPath, 0755); err != nil {
@@ -95,7 +95,7 @@ type raftLogs struct {
 	file           *os.File
 	mutex          *sync.Mutex
 	logger         *zap.Logger
-	serde          RaftSerdeIface
+	serde          RaftSerde
 	batchSeparater byte
 	batchSize      int
 }

@@ -15,32 +15,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockRaftSerdeIface is a mock of RaftSerdeIface interface.
-type MockRaftSerdeIface struct {
+// MockRaftSerde is a mock of RaftSerde interface.
+type MockRaftSerde struct {
 	ctrl     *gomock.Controller
-	recorder *MockRaftSerdeIfaceMockRecorder
+	recorder *MockRaftSerdeMockRecorder
 	isgomock struct{}
 }
 
-// MockRaftSerdeIfaceMockRecorder is the mock recorder for MockRaftSerdeIface.
-type MockRaftSerdeIfaceMockRecorder struct {
-	mock *MockRaftSerdeIface
+// MockRaftSerdeMockRecorder is the mock recorder for MockRaftSerde.
+type MockRaftSerdeMockRecorder struct {
+	mock *MockRaftSerde
 }
 
-// NewMockRaftSerdeIface creates a new mock instance.
-func NewMockRaftSerdeIface(ctrl *gomock.Controller) *MockRaftSerdeIface {
-	mock := &MockRaftSerdeIface{ctrl: ctrl}
-	mock.recorder = &MockRaftSerdeIfaceMockRecorder{mock}
+// NewMockRaftSerde creates a new mock instance.
+func NewMockRaftSerde(ctrl *gomock.Controller) *MockRaftSerde {
+	mock := &MockRaftSerde{ctrl: ctrl}
+	mock.recorder = &MockRaftSerdeMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockRaftSerdeIface) EXPECT() *MockRaftSerdeIfaceMockRecorder {
+func (m *MockRaftSerde) EXPECT() *MockRaftSerdeMockRecorder {
 	return m.recorder
 }
 
 // BatchDeserialize mocks base method.
-func (m *MockRaftSerdeIface) BatchDeserialize(data []byte) ([]*RaftLogEntry, error) {
+func (m *MockRaftSerde) BatchDeserialize(data []byte) ([]*RaftLogEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BatchDeserialize", data)
 	ret0, _ := ret[0].([]*RaftLogEntry)
@@ -49,13 +49,13 @@ func (m *MockRaftSerdeIface) BatchDeserialize(data []byte) ([]*RaftLogEntry, err
 }
 
 // BatchDeserialize indicates an expected call of BatchDeserialize.
-func (mr *MockRaftSerdeIfaceMockRecorder) BatchDeserialize(data any) *gomock.Call {
+func (mr *MockRaftSerdeMockRecorder) BatchDeserialize(data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeserialize", reflect.TypeOf((*MockRaftSerdeIface)(nil).BatchDeserialize), data)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchDeserialize", reflect.TypeOf((*MockRaftSerde)(nil).BatchDeserialize), data)
 }
 
 // BatchSerialize mocks base method.
-func (m *MockRaftSerdeIface) BatchSerialize(entries []*RaftLogEntry) ([]byte, error) {
+func (m *MockRaftSerde) BatchSerialize(entries []*RaftLogEntry) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BatchSerialize", entries)
 	ret0, _ := ret[0].([]byte)
@@ -64,13 +64,13 @@ func (m *MockRaftSerdeIface) BatchSerialize(entries []*RaftLogEntry) ([]byte, er
 }
 
 // BatchSerialize indicates an expected call of BatchSerialize.
-func (mr *MockRaftSerdeIfaceMockRecorder) BatchSerialize(entries any) *gomock.Call {
+func (mr *MockRaftSerdeMockRecorder) BatchSerialize(entries any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchSerialize", reflect.TypeOf((*MockRaftSerdeIface)(nil).BatchSerialize), entries)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchSerialize", reflect.TypeOf((*MockRaftSerde)(nil).BatchSerialize), entries)
 }
 
 // LogDeserialize mocks base method.
-func (m *MockRaftSerdeIface) LogDeserialize(data []byte) (*RaftLogEntry, error) {
+func (m *MockRaftSerde) LogDeserialize(data []byte) (*RaftLogEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LogDeserialize", data)
 	ret0, _ := ret[0].(*RaftLogEntry)
@@ -79,13 +79,13 @@ func (m *MockRaftSerdeIface) LogDeserialize(data []byte) (*RaftLogEntry, error) 
 }
 
 // LogDeserialize indicates an expected call of LogDeserialize.
-func (mr *MockRaftSerdeIfaceMockRecorder) LogDeserialize(data any) *gomock.Call {
+func (mr *MockRaftSerdeMockRecorder) LogDeserialize(data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogDeserialize", reflect.TypeOf((*MockRaftSerdeIface)(nil).LogDeserialize), data)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogDeserialize", reflect.TypeOf((*MockRaftSerde)(nil).LogDeserialize), data)
 }
 
 // LogSerialize mocks base method.
-func (m *MockRaftSerdeIface) LogSerialize(entry *RaftLogEntry) ([]byte, error) {
+func (m *MockRaftSerde) LogSerialize(entry *RaftLogEntry) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LogSerialize", entry)
 	ret0, _ := ret[0].([]byte)
@@ -94,7 +94,7 @@ func (m *MockRaftSerdeIface) LogSerialize(entry *RaftLogEntry) ([]byte, error) {
 }
 
 // LogSerialize indicates an expected call of LogSerialize.
-func (mr *MockRaftSerdeIfaceMockRecorder) LogSerialize(entry any) *gomock.Call {
+func (mr *MockRaftSerdeMockRecorder) LogSerialize(entry any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogSerialize", reflect.TypeOf((*MockRaftSerdeIface)(nil).LogSerialize), entry)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogSerialize", reflect.TypeOf((*MockRaftSerde)(nil).LogSerialize), entry)
 }
