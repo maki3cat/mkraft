@@ -13,6 +13,7 @@ import (
 // implementation gap: the commitIdx and lastApplied shall be persisted in implementation
 // if not, if all nodes shutdown, the commitIdx and lastApplied will be lost
 func (n *Node) getIdxFileName() string {
+	// todo: add a data directory to store this file and raft logs
 	return "index.rft"
 }
 
@@ -81,16 +82,21 @@ func (n *Node) incrementCommitIdx(numberOfCommand uint64) error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	n.commitIndex = n.commitIndex + numberOfCommand
-	n.unsafeSaveIdx()
-	return n.unsafeCheckIndexIntegrity()
+	if err := n.unsafeCheckIndexIntegrity(); err != nil {
+		return err
+	}
+	return n.unsafeSaveIdx()
 }
 
 func (n *Node) incrementLastApplied(numberOfCommand uint64) error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	n.lastApplied = n.lastApplied + numberOfCommand
-	n.unsafeSaveIdx()
-	return n.unsafeCheckIndexIntegrity()
+	err := n.unsafeCheckIndexIntegrity()
+	if err != nil {
+		return err
+	}
+	return n.unsafeSaveIdx()
 }
 
 func (n *Node) unsafeCheckIndexIntegrity() error {
