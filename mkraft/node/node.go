@@ -51,10 +51,10 @@ type Node interface {
 // not only new a class but also catch up statemachine, so it may cost time
 func NewNode(
 	nodeId string,
-	cfg common.ConfigIface,
+	cfg common.ConfigManager,
 	logger *zap.Logger,
 	membership peers.Membership,
-	statemachine plugs.StateMachineIface,
+	statemachine plugs.StateMachine,
 	raftLog log.RaftLogs,
 ) Node {
 	bufferSize := cfg.GetRaftNodeRequestBufferSize()
@@ -110,9 +110,9 @@ type nodeImpl struct {
 	membership peers.Membership // managed by the outside overarching server
 
 	raftLog      log.RaftLogs // required, persistent
-	cfg          common.ConfigIface
+	cfg          common.ConfigManager
 	logger       *zap.Logger
-	statemachine plugs.StateMachineIface
+	statemachine plugs.StateMachine
 
 	// for the node state
 	sem *semaphore.Weighted

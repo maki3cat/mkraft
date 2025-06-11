@@ -19,12 +19,12 @@ func newMockNode(t *testing.T) *nodeImpl {
 	mockRaftLog := log.NewMockRaftLogs(ctrl)
 	mockRaftLog.EXPECT().GetLastLogIdx().Return(uint64(0)).AnyTimes()
 
-	config := common.NewMockConfigIface(ctrl)
+	config := common.NewMockConfigManager(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10).AnyTimes()
 	config.EXPECT().GetDataDir().Return("./tmp/").AnyTimes()
 
 	membership := peers.NewMockMembership(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
+	statemachine := plugs.NewMockStateMachine(ctrl)
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node := n.(*nodeImpl)

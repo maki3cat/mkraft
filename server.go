@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func NewServer(cfg common.ConfigIface, logger *zap.Logger) (*Server, error) {
+func NewServer(cfg common.ConfigManager, logger *zap.Logger) (*Server, error) {
 	membershipMgr, err := peers.NewMembershipWithStaticConfig(logger, cfg)
 	if err != nil {
 		return nil, err
@@ -30,9 +30,9 @@ func NewServer(cfg common.ConfigIface, logger *zap.Logger) (*Server, error) {
 
 	nodeID := cfg.GetMembership().CurrentNodeID
 
-	raftLogIface := log.NewRaftLogsImplAndLoad(cfg.GetDataDir(), logger, nil)
+	raftLog := log.NewRaftLogsImplAndLoad(cfg.GetDataDir(), logger, nil)
 	statemachine := plugs.NewStateMachineNoOpImpl()
-	node := node.NewNode(nodeID, cfg, logger, membershipMgr, statemachine, raftLogIface)
+	node := node.NewNode(nodeID, cfg, logger, membershipMgr, statemachine, raftLog)
 	handlers := mkraft.NewHandlers(logger, node)
 
 	server := &Server{
@@ -53,7 +53,7 @@ func NewServer(cfg common.ConfigIface, logger *zap.Logger) (*Server, error) {
 
 type Server struct {
 	logger     *zap.Logger
-	cfg        common.ConfigIface
+	cfg        common.ConfigManager
 	node       node.Node
 	membership peers.Membership
 
