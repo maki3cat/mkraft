@@ -15,11 +15,10 @@ var ErrServerBusy = errors.New("server busy")
 var ErrNotEnoughPeersForConsensus = errors.New("not enough peers for consensus")
 var ErrMajorityNotMet = errors.New("majority not met")
 
-// invariants broken
+// invariants broken -> should be panic which means the system has serious bugs
 var ErrInvariantsBroken = errors.New("invariants broken")
-
-var ErrContextDone = errors.New("context done")
 
 // context related
 var ErrDeadlineNotSet = errors.New("deadline not set")
+var ErrContextDone = errors.New("context done")
 var ErrDeadlineInThePast = errors.New("deadline in the past")

@@ -2,9 +2,11 @@ package node
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
+	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
 	"go.uber.org/zap"
@@ -109,11 +111,11 @@ func (n *Node) cleanupApplyLogsBeforeToLeader() {
 // ------------------- BASIC OPERATIONS --------------------------------
 // apply the committed yet not applied logs to the state machine
 func (n *Node) applyAllLaggedCommitedLogs(ctx context.Context) error {
-
 	if len(n.leaderApplyCh) > 0 {
 		n.logger.Error("leaderApplyCh is not empty, this should not happen")
-		// todo: temporary panic, need to fix
-		panic("leaderApplyCh is not empty, this should not happen")
+		// maki: panic seems to be a bad idea, but this is a fatal error
+		// todo: don't know other ways to handle this
+		panic("leaderApplyCh is not empty, critial bug")
 	}
 
 	commitIdx, lastApplied := n.getCommitIdxAndLastApplied()
@@ -121,7 +123,7 @@ func (n *Node) applyAllLaggedCommitedLogs(ctx context.Context) error {
 		logs, err := n.raftLog.ReadLogsInBatchFromIdx(lastApplied + 1)
 		if err != nil {
 			n.logger.Error("failed to get logs from index", zap.Error(err))
-			panic(err)
+			return err
 		}
 		cmds := make([][]byte, len(logs))
 		for i, cmd := range logs {
@@ -132,7 +134,13 @@ func (n *Node) applyAllLaggedCommitedLogs(ctx context.Context) error {
 			n.logger.Error("failed to apply command to state machine", zap.Error(err))
 			return err
 		}
-		n.incrementLastApplied(uint64(len(logs)))
+		err = n.incrementLastApplied(uint64(len(logs)))
+		if err != nil {
+			if errors.Is(err, common.ErrInvariantsBroken) {
+				panic(err) // fatal error
+			}
+			return err
+		}
 	}
 	return nil
 }
