@@ -135,6 +135,8 @@ func TestCalculateIfAlreadyFail(t *testing.T) {
 	}
 }
 
+// ---------------------------------------ConsensusRequestVote---------------------------------------
+
 func TestNode_ConsensusRequestVote_HappyPath(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -550,6 +552,334 @@ func TestConsensusRequestVoteContext(t *testing.T) {
 			_, err := node.ConsensusRequestVote(ctx, req)
 			if err != tt.wantErr {
 				t.Errorf("ConsensusRequestVote() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+/// ---------------------------------------ConsensusAppendEntries---------------------------------------
+
+func TestNode_ConsensusAppendEntries_HappyPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+			mockClient1 := peers.NewMockPeerClient(ctrl)
+			mockClient2 := peers.NewMockPeerClient(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			peerReqs := map[string]*rpc.AppendEntriesRequest{
+				"node2": {
+					Term:         1,
+					LeaderId:     "node1",
+					PrevLogIndex: 0,
+					PrevLogTerm:  0,
+					Entries:      []*rpc.LogEntry{{Data: []byte("test")}},
+					LeaderCommit: 0,
+				},
+				"node3": {
+					Term:         1,
+					LeaderId:     "node1",
+					PrevLogIndex: 0,
+					PrevLogTerm:  0,
+					Entries:      []*rpc.LogEntry{{Data: []byte("test")}},
+					LeaderCommit: 0,
+				},
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClientsV2().Return(map[string]peers.PeerClient{
+				"node2": mockClient1,
+				"node3": mockClient2,
+			}, nil)
+
+			expectCall1 := mockClient1.EXPECT().AppendEntriesWithRetry(gomock.Any(), peerReqs["node2"]).Return(&rpc.AppendEntriesResponse{
+				Term:    1,
+				Success: true,
+			}, nil)
+			expectCall2 := mockClient2.EXPECT().AppendEntriesWithRetry(gomock.Any(), peerReqs["node3"]).Return(&rpc.AppendEntriesResponse{
+				Term:    1,
+				Success: true,
+			}, nil)
+
+			if tt.maxTimes > 0 {
+				expectCall1.MaxTimes(tt.maxTimes)
+				expectCall2.MaxTimes(tt.maxTimes)
+			}
+
+			resp, err := node.ConsensusAppendEntries(ctx, peerReqs, 1)
+			if err != nil {
+				t.Errorf("ConsensusAppendEntries() error = %v", err)
+				return
+			}
+
+			if tt.sleep {
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			if !resp.Success {
+				t.Error("ConsensusAppendEntries() expected success")
+			}
+		})
+	}
+}
+
+func TestNode_ConsensusAppendEntries_HigherTerm(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+			mockClient1 := peers.NewMockPeerClient(ctrl)
+			mockClient2 := peers.NewMockPeerClient(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			peerReqs := map[string]*rpc.AppendEntriesRequest{
+				"node2": {
+					Term:         1,
+					LeaderId:     "node1",
+					PrevLogIndex: 0,
+					PrevLogTerm:  0,
+					Entries:      []*rpc.LogEntry{{Data: []byte("test")}},
+					LeaderCommit: 0,
+				},
+				"node3": {
+					Term:         1,
+					LeaderId:     "node1",
+					PrevLogIndex: 0,
+					PrevLogTerm:  0,
+					Entries:      []*rpc.LogEntry{{Data: []byte("test")}},
+					LeaderCommit: 0,
+				},
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClientsV2().Return(map[string]peers.PeerClient{
+				"node2": mockClient1,
+				"node3": mockClient2,
+			}, nil)
+
+			expectCall1 := mockClient1.EXPECT().AppendEntriesWithRetry(gomock.Any(), peerReqs["node2"]).Return(&rpc.AppendEntriesResponse{
+				Term:    2,
+				Success: false,
+			}, nil)
+			expectCall2 := mockClient2.EXPECT().AppendEntriesWithRetry(gomock.Any(), peerReqs["node3"]).Return(&rpc.AppendEntriesResponse{
+				Term:    2,
+				Success: false,
+			}, nil)
+
+			if tt.maxTimes > 0 {
+				expectCall1.MaxTimes(tt.maxTimes)
+				expectCall2.MaxTimes(tt.maxTimes)
+			}
+
+			resp, err := node.ConsensusAppendEntries(ctx, peerReqs, 1)
+			if tt.sleep {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if err != nil {
+				t.Errorf("ConsensusAppendEntries() error = %v", err)
+			}
+			if resp.Term != 2 || resp.Success {
+				t.Errorf("ConsensusAppendEntries() expected term=2 success=false, got term=%d success=%v",
+					resp.Term, resp.Success)
+			}
+		})
+	}
+}
+
+func TestNode_ConsensusAppendEntries_MembershipError(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			peerReqs := map[string]*rpc.AppendEntriesRequest{
+				"node2": {
+					Term:         1,
+					LeaderId:     "node1",
+					PrevLogIndex: 0,
+					PrevLogTerm:  0,
+					Entries:      []*rpc.LogEntry{{Data: []byte("test")}},
+					LeaderCommit: 0,
+				},
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClientsV2().Return(nil, errors.New("membership error"))
+
+			_, err := node.ConsensusAppendEntries(ctx, peerReqs, 1)
+			if tt.sleep {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if err == nil {
+				t.Error("ConsensusAppendEntries() expected error, got nil")
+			}
+		})
+	}
+}
+
+func TestNode_ConsensusAppendEntries_ContextCancelled(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxTimes int
+		sleep    bool
+	}{
+		{
+			name:     "shortcut path",
+			maxTimes: 1,
+			sleep:    false,
+		},
+		{
+			name:     "normal path",
+			maxTimes: 0,
+			sleep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockMembership := peers.NewMockMembership(ctrl)
+			mockClient1 := peers.NewMockPeerClient(ctrl)
+			mockClient2 := peers.NewMockPeerClient(ctrl)
+
+			node := &Node{
+				membership: mockMembership,
+				logger:     zap.NewNop(),
+			}
+
+			peerReqs := map[string]*rpc.AppendEntriesRequest{
+				"node2": {
+					Term:         1,
+					LeaderId:     "node1",
+					PrevLogIndex: 0,
+					PrevLogTerm:  0,
+					Entries:      []*rpc.LogEntry{{Data: []byte("test")}},
+					LeaderCommit: 0,
+				},
+				"node3": {
+					Term:         1,
+					LeaderId:     "node1",
+					PrevLogIndex: 0,
+					PrevLogTerm:  0,
+					Entries:      []*rpc.LogEntry{{Data: []byte("test")}},
+					LeaderCommit: 0,
+				},
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			mockMembership.EXPECT().GetMemberCount().Return(3)
+			mockMembership.EXPECT().GetAllPeerClientsV2().Return(map[string]peers.PeerClient{
+				"node2": mockClient1,
+				"node3": mockClient2,
+			}, nil)
+
+			expectCall1 := mockClient1.EXPECT().AppendEntriesWithRetry(gomock.Any(), peerReqs["node2"]).
+				DoAndReturn(func(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
+					cancel()
+					return nil, context.Canceled
+				})
+
+			expectCall2 := mockClient2.EXPECT().AppendEntriesWithRetry(gomock.Any(), peerReqs["node3"]).
+				DoAndReturn(func(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
+					cancel()
+					return nil, context.Canceled
+				})
+
+			if tt.maxTimes > 0 {
+				expectCall1.MaxTimes(tt.maxTimes)
+				expectCall2.MaxTimes(tt.maxTimes)
+			}
+
+			_, err := node.ConsensusAppendEntries(ctx, peerReqs, 1)
+			if tt.sleep {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if err == nil || !errors.Is(err, context.Canceled) {
+				t.Errorf("ConsensusAppendEntries() error = %v, want context canceled", err)
 			}
 		})
 	}
