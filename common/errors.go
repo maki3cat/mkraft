@@ -19,3 +19,7 @@ var ErrMajorityNotMet = errors.New("majority not met")
 var ErrInvariantsBroken = errors.New("invariants broken")
 
 var ErrContextDone = errors.New("context done")
+
+// context related
+var ErrDeadlineNotSet = errors.New("deadline not set")
+var ErrDeadlineInThePast = errors.New("deadline in the past")
