@@ -16,32 +16,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockRaftLogsIface is a mock of RaftLogsIface interface.
-type MockRaftLogsIface struct {
+// MockRaftLogs is a mock of RaftLogs interface.
+type MockRaftLogs struct {
 	ctrl     *gomock.Controller
-	recorder *MockRaftLogsIfaceMockRecorder
+	recorder *MockRaftLogsMockRecorder
 	isgomock struct{}
 }
 
-// MockRaftLogsIfaceMockRecorder is the mock recorder for MockRaftLogsIface.
-type MockRaftLogsIfaceMockRecorder struct {
-	mock *MockRaftLogsIface
+// MockRaftLogsMockRecorder is the mock recorder for MockRaftLogs.
+type MockRaftLogsMockRecorder struct {
+	mock *MockRaftLogs
 }
 
-// NewMockRaftLogsIface creates a new mock instance.
-func NewMockRaftLogsIface(ctrl *gomock.Controller) *MockRaftLogsIface {
-	mock := &MockRaftLogsIface{ctrl: ctrl}
-	mock.recorder = &MockRaftLogsIfaceMockRecorder{mock}
+// NewMockRaftLogs creates a new mock instance.
+func NewMockRaftLogs(ctrl *gomock.Controller) *MockRaftLogs {
+	mock := &MockRaftLogs{ctrl: ctrl}
+	mock.recorder = &MockRaftLogsMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockRaftLogsIface) EXPECT() *MockRaftLogsIfaceMockRecorder {
+func (m *MockRaftLogs) EXPECT() *MockRaftLogsMockRecorder {
 	return m.recorder
 }
 
 // AppendLogsInBatch mocks base method.
-func (m *MockRaftLogsIface) AppendLogsInBatch(ctx context.Context, commandList [][]byte, term uint32) error {
+func (m *MockRaftLogs) AppendLogsInBatch(ctx context.Context, commandList [][]byte, term uint32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AppendLogsInBatch", ctx, commandList, term)
 	ret0, _ := ret[0].(error)
@@ -49,13 +49,13 @@ func (m *MockRaftLogsIface) AppendLogsInBatch(ctx context.Context, commandList [
 }
 
 // AppendLogsInBatch indicates an expected call of AppendLogsInBatch.
-func (mr *MockRaftLogsIfaceMockRecorder) AppendLogsInBatch(ctx, commandList, term any) *gomock.Call {
+func (mr *MockRaftLogsMockRecorder) AppendLogsInBatch(ctx, commandList, term any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogsInBatch", reflect.TypeOf((*MockRaftLogsIface)(nil).AppendLogsInBatch), ctx, commandList, term)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogsInBatch", reflect.TypeOf((*MockRaftLogs)(nil).AppendLogsInBatch), ctx, commandList, term)
 }
 
 // CheckPreLog mocks base method.
-func (m *MockRaftLogsIface) CheckPreLog(preLogIndex uint64, term uint32) bool {
+func (m *MockRaftLogs) CheckPreLog(preLogIndex uint64, term uint32) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CheckPreLog", preLogIndex, term)
 	ret0, _ := ret[0].(bool)
@@ -63,13 +63,13 @@ func (m *MockRaftLogsIface) CheckPreLog(preLogIndex uint64, term uint32) bool {
 }
 
 // CheckPreLog indicates an expected call of CheckPreLog.
-func (mr *MockRaftLogsIfaceMockRecorder) CheckPreLog(preLogIndex, term any) *gomock.Call {
+func (mr *MockRaftLogsMockRecorder) CheckPreLog(preLogIndex, term any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPreLog", reflect.TypeOf((*MockRaftLogsIface)(nil).CheckPreLog), preLogIndex, term)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPreLog", reflect.TypeOf((*MockRaftLogs)(nil).CheckPreLog), preLogIndex, term)
 }
 
 // GetLastLogIdx mocks base method.
-func (m *MockRaftLogsIface) GetLastLogIdx() uint64 {
+func (m *MockRaftLogs) GetLastLogIdx() uint64 {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLastLogIdx")
 	ret0, _ := ret[0].(uint64)
@@ -77,13 +77,13 @@ func (m *MockRaftLogsIface) GetLastLogIdx() uint64 {
 }
 
 // GetLastLogIdx indicates an expected call of GetLastLogIdx.
-func (mr *MockRaftLogsIfaceMockRecorder) GetLastLogIdx() *gomock.Call {
+func (mr *MockRaftLogsMockRecorder) GetLastLogIdx() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastLogIdx", reflect.TypeOf((*MockRaftLogsIface)(nil).GetLastLogIdx))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastLogIdx", reflect.TypeOf((*MockRaftLogs)(nil).GetLastLogIdx))
 }
 
 // GetLastLogIdxAndTerm mocks base method.
-func (m *MockRaftLogsIface) GetLastLogIdxAndTerm() (uint64, uint32) {
+func (m *MockRaftLogs) GetLastLogIdxAndTerm() (uint64, uint32) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLastLogIdxAndTerm")
 	ret0, _ := ret[0].(uint64)
@@ -92,13 +92,13 @@ func (m *MockRaftLogsIface) GetLastLogIdxAndTerm() (uint64, uint32) {
 }
 
 // GetLastLogIdxAndTerm indicates an expected call of GetLastLogIdxAndTerm.
-func (mr *MockRaftLogsIfaceMockRecorder) GetLastLogIdxAndTerm() *gomock.Call {
+func (mr *MockRaftLogsMockRecorder) GetLastLogIdxAndTerm() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastLogIdxAndTerm", reflect.TypeOf((*MockRaftLogsIface)(nil).GetLastLogIdxAndTerm))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastLogIdxAndTerm", reflect.TypeOf((*MockRaftLogs)(nil).GetLastLogIdxAndTerm))
 }
 
 // GetTermByIndex mocks base method.
-func (m *MockRaftLogsIface) GetTermByIndex(index uint64) (uint32, error) {
+func (m *MockRaftLogs) GetTermByIndex(index uint64) (uint32, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTermByIndex", index)
 	ret0, _ := ret[0].(uint32)
@@ -107,13 +107,13 @@ func (m *MockRaftLogsIface) GetTermByIndex(index uint64) (uint32, error) {
 }
 
 // GetTermByIndex indicates an expected call of GetTermByIndex.
-func (mr *MockRaftLogsIfaceMockRecorder) GetTermByIndex(index any) *gomock.Call {
+func (mr *MockRaftLogsMockRecorder) GetTermByIndex(index any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTermByIndex", reflect.TypeOf((*MockRaftLogsIface)(nil).GetTermByIndex), index)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTermByIndex", reflect.TypeOf((*MockRaftLogs)(nil).GetTermByIndex), index)
 }
 
 // ReadLogsInBatchFromIdx mocks base method.
-func (m *MockRaftLogsIface) ReadLogsInBatchFromIdx(index uint64) ([]*RaftLogEntry, error) {
+func (m *MockRaftLogs) ReadLogsInBatchFromIdx(index uint64) ([]*RaftLogEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadLogsInBatchFromIdx", index)
 	ret0, _ := ret[0].([]*RaftLogEntry)
@@ -122,13 +122,13 @@ func (m *MockRaftLogsIface) ReadLogsInBatchFromIdx(index uint64) ([]*RaftLogEntr
 }
 
 // ReadLogsInBatchFromIdx indicates an expected call of ReadLogsInBatchFromIdx.
-func (mr *MockRaftLogsIfaceMockRecorder) ReadLogsInBatchFromIdx(index any) *gomock.Call {
+func (mr *MockRaftLogsMockRecorder) ReadLogsInBatchFromIdx(index any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadLogsInBatchFromIdx", reflect.TypeOf((*MockRaftLogsIface)(nil).ReadLogsInBatchFromIdx), index)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadLogsInBatchFromIdx", reflect.TypeOf((*MockRaftLogs)(nil).ReadLogsInBatchFromIdx), index)
 }
 
 // UpdateLogsInBatch mocks base method.
-func (m *MockRaftLogsIface) UpdateLogsInBatch(ctx context.Context, preLogIndex uint64, commandList [][]byte, term uint32) error {
+func (m *MockRaftLogs) UpdateLogsInBatch(ctx context.Context, preLogIndex uint64, commandList [][]byte, term uint32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateLogsInBatch", ctx, preLogIndex, commandList, term)
 	ret0, _ := ret[0].(error)
@@ -136,7 +136,7 @@ func (m *MockRaftLogsIface) UpdateLogsInBatch(ctx context.Context, preLogIndex u
 }
 
 // UpdateLogsInBatch indicates an expected call of UpdateLogsInBatch.
-func (mr *MockRaftLogsIfaceMockRecorder) UpdateLogsInBatch(ctx, preLogIndex, commandList, term any) *gomock.Call {
+func (mr *MockRaftLogsMockRecorder) UpdateLogsInBatch(ctx, preLogIndex, commandList, term any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogsInBatch", reflect.TypeOf((*MockRaftLogsIface)(nil).UpdateLogsInBatch), ctx, preLogIndex, commandList, term)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogsInBatch", reflect.TypeOf((*MockRaftLogs)(nil).UpdateLogsInBatch), ctx, preLogIndex, commandList, term)
 }

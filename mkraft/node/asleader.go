@@ -41,7 +41,7 @@ If AppendEntries fails because of log inconsistency: decrement nextIndex and ret
 (4) If there exists and N such that N > committedIndex, a majority of matchIndex[i] ≥ N, ... (5.3/5.4)
 todo: this paper doesn't mention how a stale leader catches up and becomes a follower
 */
-func (n *Node) RunAsLeader(ctx context.Context) {
+func (n *nodeImpl) RunAsLeader(ctx context.Context) {
 	n.runAsLeaderImpl(ctx)
 }
 
@@ -57,7 +57,7 @@ func (n *Node) RunAsLeader(ctx context.Context) {
 // task1 has lower priority than task3
 
 // the only worker thread needed is the log applicaiton thread
-func (n *Node) runAsLeaderImpl(ctx context.Context) {
+func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 
 	if n.GetNodeState() != StateLeader {
 		panic("node is not in LEADER state")
@@ -152,7 +152,7 @@ type JobResult struct {
 }
 
 // @return: shall degrade to follower or not
-func (n *Node) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
+func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	currentTerm := n.getCurrentTerm()
 	peerNodeIDs, err := n.membership.GetAllPeerNodeIDs()
@@ -208,7 +208,7 @@ func (n *Node) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 // problem-2: the leader is alive but majority followers are dead
 // problem-3: the leader is stale
 // @return: shall degrade to follower or not, and the error
-func (n *Node) syncDoLogReplication(ctx context.Context, clientCommands []*utils.ClientCommandInternalReq) (JobResult, error) {
+func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*utils.ClientCommandInternalReq) (JobResult, error) {
 
 	var subTasksToWait sync.WaitGroup
 	subTasksToWait.Add(2)
@@ -304,7 +304,7 @@ func (n *Node) syncDoLogReplication(ctx context.Context, clientCommands []*utils
 	}
 }
 
-func (n *Node) handlerAppendEntriesAsLeader(internalReq *utils.AppendEntriesInternalReq) (JobResult, error) {
+func (n *nodeImpl) handlerAppendEntriesAsLeader(internalReq *utils.AppendEntriesInternalReq) (JobResult, error) {
 	req := internalReq.Req
 	reqTerm := uint32(req.Term)
 	currentTerm := n.getCurrentTerm()
@@ -338,7 +338,7 @@ func (n *Node) handlerAppendEntriesAsLeader(internalReq *utils.AppendEntriesInte
 	}
 }
 
-func (n *Node) handleRequestVoteAsLeader(internalReq *utils.RequestVoteInternalReq) (JobResult, error) {
+func (n *nodeImpl) handleRequestVoteAsLeader(internalReq *utils.RequestVoteInternalReq) (JobResult, error) {
 	resp := n.handleVoteRequest(internalReq.Req)
 	wrapper := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 		Resp: resp,
@@ -352,7 +352,7 @@ func (n *Node) handleRequestVoteAsLeader(internalReq *utils.RequestVoteInternalR
 	}
 }
 
-func (n *Node) recordLeaderState() {
+func (n *nodeImpl) recordLeaderState() {
 	stateFilePath := "leader.tmp"
 	file, err := os.OpenFile(stateFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -372,7 +372,7 @@ func (n *Node) recordLeaderState() {
 }
 
 // todo: shall be refactored with "the safty feature"
-func (n *Node) getLogsToCatchupForPeers(peerNodeIDs []string) (map[string]log.CatchupLogs, error) {
+func (n *nodeImpl) getLogsToCatchupForPeers(peerNodeIDs []string) (map[string]log.CatchupLogs, error) {
 	result := make(map[string]log.CatchupLogs)
 	for _, peerNodeID := range peerNodeIDs {
 		// todo: can be batch reading

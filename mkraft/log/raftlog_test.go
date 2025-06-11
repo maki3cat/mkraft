@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupTest() (RaftLogsIface, func()) {
+func setupTest() (RaftLogs, func()) {
 	raftLog := NewRaftLogsImplAndLoad("test.log", zap.NewNop(), NewRaftSerdeImpl())
 	cleanup := func() {
 		os.Remove("test.log")
@@ -95,7 +95,7 @@ func TestRaftLog_InitFromLogFile(t *testing.T) {
 				expectedLogs = tt.setupFile(testFile)
 			}
 
-			rl := &WALInspiredRaftLogsImpl{
+			rl := &raftLogs{
 				file:           nil,
 				mutex:          &sync.Mutex{},
 				batchSeparater: '\x1D',
@@ -414,7 +414,7 @@ func TestRaftLogs_CheckPreLog(t *testing.T) {
 	}
 }
 
-func setupTestRaftLog(t *testing.T) RaftLogsIface {
+func setupTestRaftLog(t *testing.T) RaftLogs {
 	tmpFile, err := os.CreateTemp("", "raftlog_test")
 	if err != nil {
 		t.Fatal(err)

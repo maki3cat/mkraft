@@ -23,7 +23,7 @@ func TestRaftLogs_Atomicity(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Type assert to access internal file field
-	impl := raftLog.(*WALInspiredRaftLogsImpl)
+	impl := raftLog.(*raftLogs)
 	impl.file.Truncate(int64(partialLen))
 	impl.file.Sync()
 	fi, err := impl.file.Stat()
@@ -42,7 +42,7 @@ func TestRaftLogs_Atomicity(t *testing.T) {
 
 	// step-3: restart the raftLog, should only get 5 logs;
 	raftLog = NewRaftLogsImplAndLoad("test.log", zap.NewNop(), NewRaftSerdeImpl())
-	impl = raftLog.(*WALInspiredRaftLogsImpl)
+	impl = raftLog.(*raftLogs)
 	// fmt.Println("len(impl.logs)", len(impl.logs))
 	assert.Equal(t, uint64(5), impl.GetLastLogIdx())
 	entries, err := raftLog.ReadLogsInBatchFromIdx(1)
@@ -93,4 +93,3 @@ func TestRaftLogs_UpdateWithOverwrite(t *testing.T) {
 	assert.Equal(t, []byte("log10"), entries[2].Commands)
 	assert.Equal(t, []byte("log12"), entries[3].Commands)
 }
-

@@ -10,12 +10,12 @@ import (
 
 // the Persistent state on all servers: currentTerm, votedFor
 // the logs are managed by RaftLogImpl, which is a separate file
-func (n *Node) getStateFileName() string {
+func (n *nodeImpl) getStateFileName() string {
 	return "state.rft"
 }
 
 // load from file system, shall be called at the beginning of the node
-func (n *Node) loadCurrentTermAndVotedFor() error {
+func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 
@@ -63,7 +63,7 @@ func (n *Node) loadCurrentTermAndVotedFor() error {
 }
 
 // store to file system, shall be called when the term or votedFor changes
-func (n *Node) storeCurrentTermAndVotedFor(term uint32, voteFor string, reEntrant bool) error {
+func (n *nodeImpl) storeCurrentTermAndVotedFor(term uint32, voteFor string, reEntrant bool) error {
 	if !reEntrant {
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()
@@ -76,7 +76,7 @@ func (n *Node) storeCurrentTermAndVotedFor(term uint32, voteFor string, reEntran
 	return nil
 }
 
-func (n *Node) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error {
+func (n *nodeImpl) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error {
 	if !reEntrant {
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()
@@ -91,7 +91,7 @@ func (n *Node) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error {
 	return nil
 }
 
-func (n *Node) unsafeUpdateNodeTermAndVoteFor(term uint32, voteFor string) (bool, error) {
+func (n *nodeImpl) unsafeUpdateNodeTermAndVoteFor(term uint32, voteFor string) (bool, error) {
 	formatted := time.Now().Format("20060102150405.000")
 	numericTimestamp := formatted[:len(formatted)-4] + formatted[len(formatted)-3:]
 	fileName := fmt.Sprintf("%s_%s.tmp", n.getStateFileName(), numericTimestamp)
@@ -131,7 +131,7 @@ func (n *Node) unsafeUpdateNodeTermAndVoteFor(term uint32, voteFor string) (bool
 }
 
 // normal read
-func (n *Node) getCurrentTerm() uint32 {
+func (n *nodeImpl) getCurrentTerm() uint32 {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 	return n.CurrentTerm

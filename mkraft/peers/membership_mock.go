@@ -84,18 +84,18 @@ func (mr *MockMembershipMockRecorder) GetAllPeerNodeIDs() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPeerNodeIDs", reflect.TypeOf((*MockMembership)(nil).GetAllPeerNodeIDs))
 }
 
-// GetMemberCount mocks base method.
-func (m *MockMembership) GetMemberCount() int {
+// GetTotalMemberCount mocks base method.
+func (m *MockMembership) GetTotalMemberCount() int {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMemberCount")
+	ret := m.ctrl.Call(m, "GetTotalMemberCount")
 	ret0, _ := ret[0].(int)
 	return ret0
 }
 
-// GetMemberCount indicates an expected call of GetMemberCount.
-func (mr *MockMembershipMockRecorder) GetMemberCount() *gomock.Call {
+// GetTotalMemberCount indicates an expected call of GetTotalMemberCount.
+func (mr *MockMembershipMockRecorder) GetTotalMemberCount() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMemberCount", reflect.TypeOf((*MockMembership)(nil).GetMemberCount))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTotalMemberCount", reflect.TypeOf((*MockMembership)(nil).GetTotalMemberCount))
 }
 
 // GracefulStop mocks base method.

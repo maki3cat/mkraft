@@ -70,7 +70,7 @@ func TestApplyAllLaggedCommitedLogs_CommitIdxGreaterThanLastApplied(t *testing.T
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	stateMachine := plugs.NewMockStateMachineIface(ctrl)
-	mockLogs := log.NewMockRaftLogsIface(ctrl)
+	mockLogs := log.NewMockRaftLogs(ctrl)
 	node.raftLog = mockLogs
 	node.statemachine = stateMachine
 	node.commitIndex = 10

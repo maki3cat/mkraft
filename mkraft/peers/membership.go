@@ -45,9 +45,8 @@ func NewMembershipWithStaticConfig(logger *zap.Logger, cfg common.ConfigIface) (
 // invariants total > peersCount
 // maki should make sure this is guaranteed somewhere else
 type Membership interface {
-	// todo: GetMemberCount, GetAllPeerClients may diverge
-	// todo: may need to be re-constructed when dynamic membership is added
-	GetMemberCount() int // current in use or set up ? setup shall be in the conf ?
+	// member count, and peers may diverge if the membership is dynamic
+	GetTotalMemberCount() int // the cluster size, not just the active ones
 	GetAllPeerClients() ([]PeerClient, error)
 	GetAllPeerClientsV2() (map[string]PeerClient, error)
 	GetAllPeerNodeIDs() ([]string, error)
@@ -110,7 +109,7 @@ func (mgr *staticMembership) getPeerClient(nodeID string) (PeerClient, error) {
 	return newClient, nil
 }
 
-func (mgr *staticMembership) GetMemberCount() int {
+func (mgr *staticMembership) GetTotalMemberCount() int {
 	return mgr.cfg.GetClusterSize()
 }
 

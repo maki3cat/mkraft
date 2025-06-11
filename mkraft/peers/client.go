@@ -50,7 +50,6 @@ func NewPeerClientImpl(
 	}
 
 	clientOptions := []grpc.DialOption{
-		// todo: add creds
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(client.loggerInterceptor),
 		grpc.WithUnaryInterceptor(client.timeoutClientInterceptor),

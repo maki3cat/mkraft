@@ -54,6 +54,20 @@ func (mr *MockConfigIfaceMockRecorder) GetClusterSize() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClusterSize", reflect.TypeOf((*MockConfigIface)(nil).GetClusterSize))
 }
 
+// GetDataDir mocks base method.
+func (m *MockConfigIface) GetDataDir() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDataDir")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetDataDir indicates an expected call of GetDataDir.
+func (mr *MockConfigIfaceMockRecorder) GetDataDir() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataDir", reflect.TypeOf((*MockConfigIface)(nil).GetDataDir))
+}
+
 // GetElectionTimeout mocks base method.
 func (m *MockConfigIface) GetElectionTimeout() time.Duration {
 	m.ctrl.T.Helper()
@@ -136,20 +150,6 @@ func (m *MockConfigIface) GetRPCRequestTimeout() time.Duration {
 func (mr *MockConfigIfaceMockRecorder) GetRPCRequestTimeout() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRPCRequestTimeout", reflect.TypeOf((*MockConfigIface)(nil).GetRPCRequestTimeout))
-}
-
-// GetRaftLogFilePath mocks base method.
-func (m *MockConfigIface) GetRaftLogFilePath() string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRaftLogFilePath")
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// GetRaftLogFilePath indicates an expected call of GetRaftLogFilePath.
-func (mr *MockConfigIfaceMockRecorder) GetRaftLogFilePath() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRaftLogFilePath", reflect.TypeOf((*MockConfigIface)(nil).GetRaftLogFilePath))
 }
 
 // GetRaftNodeRequestBufferSize mocks base method.

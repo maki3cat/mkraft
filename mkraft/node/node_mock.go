@@ -17,86 +17,86 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockNodeIface is a mock of NodeIface interface.
-type MockNodeIface struct {
+// MockNode is a mock of Node interface.
+type MockNode struct {
 	ctrl     *gomock.Controller
-	recorder *MockNodeIfaceMockRecorder
+	recorder *MockNodeMockRecorder
 	isgomock struct{}
 }
 
-// MockNodeIfaceMockRecorder is the mock recorder for MockNodeIface.
-type MockNodeIfaceMockRecorder struct {
-	mock *MockNodeIface
+// MockNodeMockRecorder is the mock recorder for MockNode.
+type MockNodeMockRecorder struct {
+	mock *MockNode
 }
 
-// NewMockNodeIface creates a new mock instance.
-func NewMockNodeIface(ctrl *gomock.Controller) *MockNodeIface {
-	mock := &MockNodeIface{ctrl: ctrl}
-	mock.recorder = &MockNodeIfaceMockRecorder{mock}
+// NewMockNode creates a new mock instance.
+func NewMockNode(ctrl *gomock.Controller) *MockNode {
+	mock := &MockNode{ctrl: ctrl}
+	mock.recorder = &MockNodeMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockNodeIface) EXPECT() *MockNodeIfaceMockRecorder {
+func (m *MockNode) EXPECT() *MockNodeMockRecorder {
 	return m.recorder
 }
 
 // AppendEntryRequest mocks base method.
-func (m *MockNodeIface) AppendEntryRequest(req *utils.AppendEntriesInternalReq) {
+func (m *MockNode) AppendEntryRequest(req *utils.AppendEntriesInternalReq) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "AppendEntryRequest", req)
 }
 
 // AppendEntryRequest indicates an expected call of AppendEntryRequest.
-func (mr *MockNodeIfaceMockRecorder) AppendEntryRequest(req any) *gomock.Call {
+func (mr *MockNodeMockRecorder) AppendEntryRequest(req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEntryRequest", reflect.TypeOf((*MockNodeIface)(nil).AppendEntryRequest), req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEntryRequest", reflect.TypeOf((*MockNode)(nil).AppendEntryRequest), req)
 }
 
 // ClientCommand mocks base method.
-func (m *MockNodeIface) ClientCommand(req *utils.ClientCommandInternalReq) {
+func (m *MockNode) ClientCommand(req *utils.ClientCommandInternalReq) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "ClientCommand", req)
 }
 
 // ClientCommand indicates an expected call of ClientCommand.
-func (mr *MockNodeIfaceMockRecorder) ClientCommand(req any) *gomock.Call {
+func (mr *MockNodeMockRecorder) ClientCommand(req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClientCommand", reflect.TypeOf((*MockNodeIface)(nil).ClientCommand), req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClientCommand", reflect.TypeOf((*MockNode)(nil).ClientCommand), req)
 }
 
 // GracefulStop mocks base method.
-func (m *MockNodeIface) GracefulStop() {
+func (m *MockNode) GracefulStop() {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "GracefulStop")
 }
 
 // GracefulStop indicates an expected call of GracefulStop.
-func (mr *MockNodeIfaceMockRecorder) GracefulStop() *gomock.Call {
+func (mr *MockNodeMockRecorder) GracefulStop() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GracefulStop", reflect.TypeOf((*MockNodeIface)(nil).GracefulStop))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GracefulStop", reflect.TypeOf((*MockNode)(nil).GracefulStop))
 }
 
 // Start mocks base method.
-func (m *MockNodeIface) Start(ctx context.Context) {
+func (m *MockNode) Start(ctx context.Context) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Start", ctx)
 }
 
 // Start indicates an expected call of Start.
-func (mr *MockNodeIfaceMockRecorder) Start(ctx any) *gomock.Call {
+func (mr *MockNodeMockRecorder) Start(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockNodeIface)(nil).Start), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockNode)(nil).Start), ctx)
 }
 
 // VoteRequest mocks base method.
-func (m *MockNodeIface) VoteRequest(req *utils.RequestVoteInternalReq) {
+func (m *MockNode) VoteRequest(req *utils.RequestVoteInternalReq) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "VoteRequest", req)
 }
 
 // VoteRequest indicates an expected call of VoteRequest.
-func (mr *MockNodeIfaceMockRecorder) VoteRequest(req any) *gomock.Call {
+func (mr *MockNodeMockRecorder) VoteRequest(req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VoteRequest", reflect.TypeOf((*MockNodeIface)(nil).VoteRequest), req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VoteRequest", reflect.TypeOf((*MockNode)(nil).VoteRequest), req)
 }

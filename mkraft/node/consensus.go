@@ -41,10 +41,10 @@ type MajorityRequestVoteResp struct {
 // it contains forever retry mechanism, so
 // !!! the ctx shall be Done within the election timeout
 // !!! This is shortcut method, it returns when the consensus is reached or failed without waiting for all the responses
-func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
+func (c *nodeImpl) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
 
 	requestID := common.GetRequestID(ctx)
-	total := c.membership.GetMemberCount()
+	total := c.membership.GetTotalMemberCount()
 	peerClients, err := c.membership.GetAllPeerClients()
 	if err != nil {
 		c.logger.Error("error in getting all peer clients",
@@ -146,11 +146,11 @@ func (c *Node) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVot
 // goroutine management:this method expands goroutines to the number of peers,
 // but since this system handles appendEnrines once a time in a serial way
 // I don't think we need to worry about the explosion of goroutines
-func (n *Node) ConsensusAppendEntries(
+func (n *nodeImpl) ConsensusAppendEntries(
 	ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error) {
 
 	requestID := common.GetRequestID(ctx)
-	total := n.membership.GetMemberCount()
+	total := n.membership.GetTotalMemberCount()
 	peerClients, err := n.membership.GetAllPeerClientsV2()
 	if err != nil {
 		n.logger.Error("error in getting all peer clients",
