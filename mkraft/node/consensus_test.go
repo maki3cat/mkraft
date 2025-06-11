@@ -23,6 +23,7 @@ func getMockNode(mockMembership *peers.MockMembership) *nodeImpl {
 		lastApplied: 0,
 		nextIndex:   map[string]uint64{},
 		matchIndex:  map[string]uint64{},
+		cfg:         common.GetDefaultConfig(),
 	}
 	return node
 }
@@ -455,6 +456,13 @@ func TestNode_ConsensusRequestVote_MembershipError(t *testing.T) {
 			mockMembership := peers.NewMockMembership(ctrl)
 			n := getMockNode(mockMembership)
 
+			req := &rpc.RequestVoteRequest{
+				Term:         1,
+				CandidateId:  "node1",
+				LastLogIndex: 0,
+				LastLogTerm:  0,
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
@@ -471,6 +479,7 @@ func TestNode_ConsensusRequestVote_MembershipError(t *testing.T) {
 		})
 	}
 }
+
 func TestConsensusRequestVoteContext(t *testing.T) {
 	tests := []struct {
 		name        string

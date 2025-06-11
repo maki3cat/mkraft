@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/maki3cat/mkraft/common"
@@ -43,7 +44,12 @@ type CatchupLogs struct {
 }
 
 func NewRaftLogsImplAndLoad(dataPath string, logger *zap.Logger, serde RaftSerdeIface) RaftLogs {
-	filePath := fmt.Sprintf("%s/raft.log", dataPath)
+
+	filePath := filepath.Join(dataPath, "raft.log")
+	if err := os.MkdirAll(dataPath, 0755); err != nil {
+		panic(err)
+	}
+
 	if serde == nil {
 		serde = NewRaftSerdeImpl()
 	}

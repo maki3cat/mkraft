@@ -61,6 +61,10 @@ func LoadConfig(filePath string) (ConfigIface, error) {
 	return cfg, nil
 }
 
+func GetDefaultConfig() ConfigIface {
+	return &Config{BasicConfig: *defaultBasicConfig}
+}
+
 var (
 	defaultBasicConfig = &BasicConfig{
 		RaftNodeRequestBufferSize:    RAFT_NODE_REQUEST_BUFFER_SIZE,

@@ -18,7 +18,13 @@ func (n *nodeImpl) getIdxFileName() string {
 }
 
 func (n *nodeImpl) unsafeSaveIdx() error {
-	idxFileName := fmt.Sprintf("%s/index_%s.rft", n.cfg.GetDataDir(), time.Now().Format("20060102150405"))
+	dir := n.cfg.GetDataDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	idxFileName := fmt.Sprintf("%s/index_%s.rft", dir, time.Now().Format("20060102150405"))
+	n.logger.Debug("saving index", zap.String("idxFileName", idxFileName))
+
 	buf := make([]byte, 0, 32)
 	buf = fmt.Appendf(buf, "%d,%d\n", n.commitIndex, n.lastApplied)
 	err := os.WriteFile(idxFileName, buf, 0644)

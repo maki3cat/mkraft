@@ -1,6 +1,7 @@
 package node
 
 import (
+	"os"
 	"testing"
 
 	"github.com/maki3cat/mkraft/common"
@@ -20,6 +21,8 @@ func TestGetCurrentState(t *testing.T) {
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node := n.(*nodeImpl)
@@ -40,6 +43,8 @@ func TestSetCurrentState(t *testing.T) {
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node := n.(*nodeImpl)
@@ -65,6 +70,8 @@ func TestIsLeader(t *testing.T) {
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node := n.(*nodeImpl)
@@ -86,6 +93,8 @@ func TestIsFollower(t *testing.T) {
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node := n.(*nodeImpl)
@@ -107,6 +116,8 @@ func TestIsCandidate(t *testing.T) {
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node := n.(*nodeImpl)
