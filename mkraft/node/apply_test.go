@@ -71,7 +71,7 @@ func TestApplyAllLaggedCommitedLogs_CommitIdxGreaterThanLastApplied(t *testing.T
 	node.lastApplied = 5
 
 	mockLogs := node.raftLog.(*log.MockRaftLogs)
-	mockStateMachine := node.statemachine.(*plugs.MockStateMachineIface)
+	mockStateMachine := node.statemachine.(*plugs.MockStateMachine)
 
 	t.Run("success case - correct number of logs", func(t *testing.T) {
 		expectedLogs := make([]*log.RaftLogEntry, 5) // 10 - 5 = 5 logs

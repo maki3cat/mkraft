@@ -10,7 +10,7 @@ import (
 
 var _ Membership = (*staticMembership)(nil)
 
-func NewMembershipWithStaticConfig(logger *zap.Logger, cfg common.ConfigIface) (Membership, error) {
+func NewMembershipWithStaticConfig(logger *zap.Logger, cfg common.ConfigManager) (Membership, error) {
 	membership := cfg.GetMembership()
 	if len(membership.AllMembers) < 3 {
 		return nil, errors.New("smallest cluster size is 3")
@@ -59,7 +59,7 @@ type staticMembership struct {
 	clients       *sync.Map
 	// conns         *sync.Map
 	logger *zap.Logger
-	cfg    common.ConfigIface
+	cfg    common.ConfigManager
 }
 
 func (mgr *staticMembership) GracefulStop() {

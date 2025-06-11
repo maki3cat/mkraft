@@ -12,10 +12,11 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var _ ConfigIface = (*Config)(nil)
+var _ ConfigManager = (*Config)(nil)
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-type ConfigIface interface {
+// todo: how about removing the interface abstraction, and just use the struct directly?
+type ConfigManager interface {
 	GetDataDir() string
 
 	GetRPCRequestTimeout() time.Duration
@@ -36,7 +37,7 @@ type ConfigIface interface {
 	Validate() error
 }
 
-func LoadConfig(filePath string) (ConfigIface, error) {
+func LoadConfig(filePath string) (ConfigManager, error) {
 	// start with default config
 	cfg := &Config{BasicConfig: *defaultBasicConfig}
 
@@ -61,7 +62,7 @@ func LoadConfig(filePath string) (ConfigIface, error) {
 	return cfg, nil
 }
 
-func GetDefaultConfig() ConfigIface {
+func GetDefaultConfig() ConfigManager {
 	return &Config{BasicConfig: *defaultBasicConfig}
 }
 

@@ -2,9 +2,9 @@ package plugs
 
 import "context"
 
-var _ StateMachineIface = (*StateMachineNoOpImpl)(nil)
+var _ StateMachine = (*stateMachineNoOp)(nil)
 
-type StateMachineIface interface {
+type StateMachine interface {
 
 	// maki: this part is very important, need to discuss with professor and refer to other implementations
 	// shall be implemented asynchronosly so that one slow command will not block the whole cluster for client command processing
@@ -18,22 +18,22 @@ type StateMachineIface interface {
 	GetLatestAppliedIndex() uint64
 }
 
-type StateMachineNoOpImpl struct {
+type stateMachineNoOp struct {
 }
 
-func NewStateMachineNoOpImpl() *StateMachineNoOpImpl {
-	return &StateMachineNoOpImpl{}
+func NewStateMachineNoOpImpl() *stateMachineNoOp {
+	return &stateMachineNoOp{}
 }
 
-func (s *StateMachineNoOpImpl) ApplyCommand(ctx context.Context, command []byte) ([]byte, error) {
+func (s *stateMachineNoOp) ApplyCommand(ctx context.Context, command []byte) ([]byte, error) {
 	// the command shall contain the command index
 	return []byte("no op"), nil
 }
 
-func (s *StateMachineNoOpImpl) GetLatestAppliedIndex() uint64 {
+func (s *stateMachineNoOp) GetLatestAppliedIndex() uint64 {
 	return 0
 }
 
-func (s *StateMachineNoOpImpl) BatchApplyCommand(ctx context.Context, commandList [][]byte) ([][]byte, error) {
+func (s *stateMachineNoOp) BatchApplyCommand(ctx context.Context, commandList [][]byte) ([][]byte, error) {
 	return nil, nil
 }

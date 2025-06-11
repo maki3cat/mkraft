@@ -16,32 +16,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockConfigIface is a mock of ConfigIface interface.
-type MockConfigIface struct {
+// MockConfigManager is a mock of ConfigManager interface.
+type MockConfigManager struct {
 	ctrl     *gomock.Controller
-	recorder *MockConfigIfaceMockRecorder
+	recorder *MockConfigManagerMockRecorder
 	isgomock struct{}
 }
 
-// MockConfigIfaceMockRecorder is the mock recorder for MockConfigIface.
-type MockConfigIfaceMockRecorder struct {
-	mock *MockConfigIface
+// MockConfigManagerMockRecorder is the mock recorder for MockConfigManager.
+type MockConfigManagerMockRecorder struct {
+	mock *MockConfigManager
 }
 
-// NewMockConfigIface creates a new mock instance.
-func NewMockConfigIface(ctrl *gomock.Controller) *MockConfigIface {
-	mock := &MockConfigIface{ctrl: ctrl}
-	mock.recorder = &MockConfigIfaceMockRecorder{mock}
+// NewMockConfigManager creates a new mock instance.
+func NewMockConfigManager(ctrl *gomock.Controller) *MockConfigManager {
+	mock := &MockConfigManager{ctrl: ctrl}
+	mock.recorder = &MockConfigManagerMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockConfigIface) EXPECT() *MockConfigIfaceMockRecorder {
+func (m *MockConfigManager) EXPECT() *MockConfigManagerMockRecorder {
 	return m.recorder
 }
 
 // GetClusterSize mocks base method.
-func (m *MockConfigIface) GetClusterSize() int {
+func (m *MockConfigManager) GetClusterSize() int {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetClusterSize")
 	ret0, _ := ret[0].(int)
@@ -49,13 +49,13 @@ func (m *MockConfigIface) GetClusterSize() int {
 }
 
 // GetClusterSize indicates an expected call of GetClusterSize.
-func (mr *MockConfigIfaceMockRecorder) GetClusterSize() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetClusterSize() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClusterSize", reflect.TypeOf((*MockConfigIface)(nil).GetClusterSize))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClusterSize", reflect.TypeOf((*MockConfigManager)(nil).GetClusterSize))
 }
 
 // GetDataDir mocks base method.
-func (m *MockConfigIface) GetDataDir() string {
+func (m *MockConfigManager) GetDataDir() string {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDataDir")
 	ret0, _ := ret[0].(string)
@@ -63,13 +63,13 @@ func (m *MockConfigIface) GetDataDir() string {
 }
 
 // GetDataDir indicates an expected call of GetDataDir.
-func (mr *MockConfigIfaceMockRecorder) GetDataDir() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetDataDir() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataDir", reflect.TypeOf((*MockConfigIface)(nil).GetDataDir))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataDir", reflect.TypeOf((*MockConfigManager)(nil).GetDataDir))
 }
 
 // GetElectionTimeout mocks base method.
-func (m *MockConfigIface) GetElectionTimeout() time.Duration {
+func (m *MockConfigManager) GetElectionTimeout() time.Duration {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetElectionTimeout")
 	ret0, _ := ret[0].(time.Duration)
@@ -77,13 +77,13 @@ func (m *MockConfigIface) GetElectionTimeout() time.Duration {
 }
 
 // GetElectionTimeout indicates an expected call of GetElectionTimeout.
-func (mr *MockConfigIfaceMockRecorder) GetElectionTimeout() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetElectionTimeout() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetElectionTimeout", reflect.TypeOf((*MockConfigIface)(nil).GetElectionTimeout))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetElectionTimeout", reflect.TypeOf((*MockConfigManager)(nil).GetElectionTimeout))
 }
 
 // GetGracefulShutdownTimeout mocks base method.
-func (m *MockConfigIface) GetGracefulShutdownTimeout() time.Duration {
+func (m *MockConfigManager) GetGracefulShutdownTimeout() time.Duration {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetGracefulShutdownTimeout")
 	ret0, _ := ret[0].(time.Duration)
@@ -91,13 +91,13 @@ func (m *MockConfigIface) GetGracefulShutdownTimeout() time.Duration {
 }
 
 // GetGracefulShutdownTimeout indicates an expected call of GetGracefulShutdownTimeout.
-func (mr *MockConfigIfaceMockRecorder) GetGracefulShutdownTimeout() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetGracefulShutdownTimeout() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGracefulShutdownTimeout", reflect.TypeOf((*MockConfigIface)(nil).GetGracefulShutdownTimeout))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGracefulShutdownTimeout", reflect.TypeOf((*MockConfigManager)(nil).GetGracefulShutdownTimeout))
 }
 
 // GetLeaderHeartbeatPeriod mocks base method.
-func (m *MockConfigIface) GetLeaderHeartbeatPeriod() time.Duration {
+func (m *MockConfigManager) GetLeaderHeartbeatPeriod() time.Duration {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLeaderHeartbeatPeriod")
 	ret0, _ := ret[0].(time.Duration)
@@ -105,13 +105,13 @@ func (m *MockConfigIface) GetLeaderHeartbeatPeriod() time.Duration {
 }
 
 // GetLeaderHeartbeatPeriod indicates an expected call of GetLeaderHeartbeatPeriod.
-func (mr *MockConfigIfaceMockRecorder) GetLeaderHeartbeatPeriod() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetLeaderHeartbeatPeriod() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLeaderHeartbeatPeriod", reflect.TypeOf((*MockConfigIface)(nil).GetLeaderHeartbeatPeriod))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLeaderHeartbeatPeriod", reflect.TypeOf((*MockConfigManager)(nil).GetLeaderHeartbeatPeriod))
 }
 
 // GetMembership mocks base method.
-func (m *MockConfigIface) GetMembership() Membership {
+func (m *MockConfigManager) GetMembership() Membership {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetMembership")
 	ret0, _ := ret[0].(Membership)
@@ -119,13 +119,13 @@ func (m *MockConfigIface) GetMembership() Membership {
 }
 
 // GetMembership indicates an expected call of GetMembership.
-func (mr *MockConfigIfaceMockRecorder) GetMembership() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetMembership() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMembership", reflect.TypeOf((*MockConfigIface)(nil).GetMembership))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMembership", reflect.TypeOf((*MockConfigManager)(nil).GetMembership))
 }
 
 // GetRPCDeadlineMargin mocks base method.
-func (m *MockConfigIface) GetRPCDeadlineMargin() time.Duration {
+func (m *MockConfigManager) GetRPCDeadlineMargin() time.Duration {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRPCDeadlineMargin")
 	ret0, _ := ret[0].(time.Duration)
@@ -133,13 +133,13 @@ func (m *MockConfigIface) GetRPCDeadlineMargin() time.Duration {
 }
 
 // GetRPCDeadlineMargin indicates an expected call of GetRPCDeadlineMargin.
-func (mr *MockConfigIfaceMockRecorder) GetRPCDeadlineMargin() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetRPCDeadlineMargin() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRPCDeadlineMargin", reflect.TypeOf((*MockConfigIface)(nil).GetRPCDeadlineMargin))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRPCDeadlineMargin", reflect.TypeOf((*MockConfigManager)(nil).GetRPCDeadlineMargin))
 }
 
 // GetRPCRequestTimeout mocks base method.
-func (m *MockConfigIface) GetRPCRequestTimeout() time.Duration {
+func (m *MockConfigManager) GetRPCRequestTimeout() time.Duration {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRPCRequestTimeout")
 	ret0, _ := ret[0].(time.Duration)
@@ -147,13 +147,13 @@ func (m *MockConfigIface) GetRPCRequestTimeout() time.Duration {
 }
 
 // GetRPCRequestTimeout indicates an expected call of GetRPCRequestTimeout.
-func (mr *MockConfigIfaceMockRecorder) GetRPCRequestTimeout() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetRPCRequestTimeout() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRPCRequestTimeout", reflect.TypeOf((*MockConfigIface)(nil).GetRPCRequestTimeout))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRPCRequestTimeout", reflect.TypeOf((*MockConfigManager)(nil).GetRPCRequestTimeout))
 }
 
 // GetRaftNodeRequestBufferSize mocks base method.
-func (m *MockConfigIface) GetRaftNodeRequestBufferSize() int {
+func (m *MockConfigManager) GetRaftNodeRequestBufferSize() int {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRaftNodeRequestBufferSize")
 	ret0, _ := ret[0].(int)
@@ -161,13 +161,13 @@ func (m *MockConfigIface) GetRaftNodeRequestBufferSize() int {
 }
 
 // GetRaftNodeRequestBufferSize indicates an expected call of GetRaftNodeRequestBufferSize.
-func (mr *MockConfigIfaceMockRecorder) GetRaftNodeRequestBufferSize() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetRaftNodeRequestBufferSize() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRaftNodeRequestBufferSize", reflect.TypeOf((*MockConfigIface)(nil).GetRaftNodeRequestBufferSize))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRaftNodeRequestBufferSize", reflect.TypeOf((*MockConfigManager)(nil).GetRaftNodeRequestBufferSize))
 }
 
 // GetgRPCServiceConf mocks base method.
-func (m *MockConfigIface) GetgRPCServiceConf() string {
+func (m *MockConfigManager) GetgRPCServiceConf() string {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetgRPCServiceConf")
 	ret0, _ := ret[0].(string)
@@ -175,13 +175,13 @@ func (m *MockConfigIface) GetgRPCServiceConf() string {
 }
 
 // GetgRPCServiceConf indicates an expected call of GetgRPCServiceConf.
-func (mr *MockConfigIfaceMockRecorder) GetgRPCServiceConf() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) GetgRPCServiceConf() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetgRPCServiceConf", reflect.TypeOf((*MockConfigIface)(nil).GetgRPCServiceConf))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetgRPCServiceConf", reflect.TypeOf((*MockConfigManager)(nil).GetgRPCServiceConf))
 }
 
 // String mocks base method.
-func (m *MockConfigIface) String() string {
+func (m *MockConfigManager) String() string {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "String")
 	ret0, _ := ret[0].(string)
@@ -189,13 +189,13 @@ func (m *MockConfigIface) String() string {
 }
 
 // String indicates an expected call of String.
-func (mr *MockConfigIfaceMockRecorder) String() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) String() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "String", reflect.TypeOf((*MockConfigIface)(nil).String))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "String", reflect.TypeOf((*MockConfigManager)(nil).String))
 }
 
 // Validate mocks base method.
-func (m *MockConfigIface) Validate() error {
+func (m *MockConfigManager) Validate() error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Validate")
 	ret0, _ := ret[0].(error)
@@ -203,7 +203,7 @@ func (m *MockConfigIface) Validate() error {
 }
 
 // Validate indicates an expected call of Validate.
-func (mr *MockConfigIfaceMockRecorder) Validate() *gomock.Call {
+func (mr *MockConfigManagerMockRecorder) Validate() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Validate", reflect.TypeOf((*MockConfigIface)(nil).Validate))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Validate", reflect.TypeOf((*MockConfigManager)(nil).Validate))
 }

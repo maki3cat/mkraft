@@ -37,11 +37,11 @@ type peerClient struct {
 	rawClient rpc.RaftServiceClient
 	conn      *grpc.ClientConn
 	logger    *zap.Logger
-	cfg       common.ConfigIface
+	cfg       common.ConfigManager
 }
 
 func NewPeerClientImpl(
-	nodeID, nodeAddr string, logger *zap.Logger, cfg common.ConfigIface) (*peerClient, error) {
+	nodeID, nodeAddr string, logger *zap.Logger, cfg common.ConfigManager) (*peerClient, error) {
 	client := &peerClient{
 		nodeId:   nodeID,
 		nodeAddr: nodeAddr,

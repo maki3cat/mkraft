@@ -16,32 +16,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockStateMachineIface is a mock of StateMachineIface interface.
-type MockStateMachineIface struct {
+// MockStateMachine is a mock of StateMachine interface.
+type MockStateMachine struct {
 	ctrl     *gomock.Controller
-	recorder *MockStateMachineIfaceMockRecorder
+	recorder *MockStateMachineMockRecorder
 	isgomock struct{}
 }
 
-// MockStateMachineIfaceMockRecorder is the mock recorder for MockStateMachineIface.
-type MockStateMachineIfaceMockRecorder struct {
-	mock *MockStateMachineIface
+// MockStateMachineMockRecorder is the mock recorder for MockStateMachine.
+type MockStateMachineMockRecorder struct {
+	mock *MockStateMachine
 }
 
-// NewMockStateMachineIface creates a new mock instance.
-func NewMockStateMachineIface(ctrl *gomock.Controller) *MockStateMachineIface {
-	mock := &MockStateMachineIface{ctrl: ctrl}
-	mock.recorder = &MockStateMachineIfaceMockRecorder{mock}
+// NewMockStateMachine creates a new mock instance.
+func NewMockStateMachine(ctrl *gomock.Controller) *MockStateMachine {
+	mock := &MockStateMachine{ctrl: ctrl}
+	mock.recorder = &MockStateMachineMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockStateMachineIface) EXPECT() *MockStateMachineIfaceMockRecorder {
+func (m *MockStateMachine) EXPECT() *MockStateMachineMockRecorder {
 	return m.recorder
 }
 
 // ApplyCommand mocks base method.
-func (m *MockStateMachineIface) ApplyCommand(ctx context.Context, command []byte) ([]byte, error) {
+func (m *MockStateMachine) ApplyCommand(ctx context.Context, command []byte) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ApplyCommand", ctx, command)
 	ret0, _ := ret[0].([]byte)
@@ -50,13 +50,13 @@ func (m *MockStateMachineIface) ApplyCommand(ctx context.Context, command []byte
 }
 
 // ApplyCommand indicates an expected call of ApplyCommand.
-func (mr *MockStateMachineIfaceMockRecorder) ApplyCommand(ctx, command any) *gomock.Call {
+func (mr *MockStateMachineMockRecorder) ApplyCommand(ctx, command any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyCommand", reflect.TypeOf((*MockStateMachineIface)(nil).ApplyCommand), ctx, command)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyCommand", reflect.TypeOf((*MockStateMachine)(nil).ApplyCommand), ctx, command)
 }
 
 // BatchApplyCommand mocks base method.
-func (m *MockStateMachineIface) BatchApplyCommand(ctx context.Context, commandList [][]byte) ([][]byte, error) {
+func (m *MockStateMachine) BatchApplyCommand(ctx context.Context, commandList [][]byte) ([][]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BatchApplyCommand", ctx, commandList)
 	ret0, _ := ret[0].([][]byte)
@@ -65,13 +65,13 @@ func (m *MockStateMachineIface) BatchApplyCommand(ctx context.Context, commandLi
 }
 
 // BatchApplyCommand indicates an expected call of BatchApplyCommand.
-func (mr *MockStateMachineIfaceMockRecorder) BatchApplyCommand(ctx, commandList any) *gomock.Call {
+func (mr *MockStateMachineMockRecorder) BatchApplyCommand(ctx, commandList any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchApplyCommand", reflect.TypeOf((*MockStateMachineIface)(nil).BatchApplyCommand), ctx, commandList)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchApplyCommand", reflect.TypeOf((*MockStateMachine)(nil).BatchApplyCommand), ctx, commandList)
 }
 
 // GetLatestAppliedIndex mocks base method.
-func (m *MockStateMachineIface) GetLatestAppliedIndex() uint64 {
+func (m *MockStateMachine) GetLatestAppliedIndex() uint64 {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLatestAppliedIndex")
 	ret0, _ := ret[0].(uint64)
@@ -79,7 +79,7 @@ func (m *MockStateMachineIface) GetLatestAppliedIndex() uint64 {
 }
 
 // GetLatestAppliedIndex indicates an expected call of GetLatestAppliedIndex.
-func (mr *MockStateMachineIfaceMockRecorder) GetLatestAppliedIndex() *gomock.Call {
+func (mr *MockStateMachineMockRecorder) GetLatestAppliedIndex() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestAppliedIndex", reflect.TypeOf((*MockStateMachineIface)(nil).GetLatestAppliedIndex))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestAppliedIndex", reflect.TypeOf((*MockStateMachine)(nil).GetLatestAppliedIndex))
 }
