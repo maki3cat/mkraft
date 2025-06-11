@@ -19,7 +19,7 @@ and only respond to requests from candidates and leaders.
 
 If times out, the follower will convert to candidate state.
 */
-func (n *Node) RunAsFollower(ctx context.Context) {
+func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 
 	if n.GetNodeState() != StateFollower {
 		panic("node is not in FOLLOWER state")
@@ -99,7 +99,7 @@ How the Shared Rule works for Candidates:
 (2) handle request of AppendEntriesRPC initiated by another server
 (3) handle reuqest of RequestVoteRPC initiated by another server
 */
-func (n *Node) RunAsCandidate(ctx context.Context) {
+func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 
 	if n.GetNodeState() != StateCandidate {
 		panic("node is not in CANDIDATE state")
@@ -215,7 +215,7 @@ func (n *Node) RunAsCandidate(ctx context.Context) {
 // this worker is used to handle client commands
 // which can be run independently of the main logic
 // maki: the tricky part is that the client command needs NOT to be drained but the apply signal needs to be drained
-func (n *Node) noleaderWorkerForClientCommand(ctx context.Context, workerWaitGroup *sync.WaitGroup) {
+func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWaitGroup *sync.WaitGroup) {
 	defer workerWaitGroup.Done()
 	for {
 		select {
@@ -245,7 +245,7 @@ func (n *Node) noleaderWorkerForClientCommand(ctx context.Context, workerWaitGro
 // maki: lastLogIndex, commitIndex, lastApplied can be totally different from each other
 // shall be called when the node is not a leader
 // the raft server is generally single-threaded, so there is no other thread to change the commitIdx
-func (n *Node) noleaderHandleAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) *rpc.AppendEntriesResponse {
+func (n *nodeImpl) noleaderHandleAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) *rpc.AppendEntriesResponse {
 
 	var response rpc.AppendEntriesResponse
 	reqTerm := uint32(req.Term)
@@ -313,7 +313,7 @@ func (n *Node) noleaderHandleAppendEntries(ctx context.Context, req *rpc.AppendE
 
 // the implementation:
 // triggers peerCnt + 1 goroutines for fan-out rpc and fan-in the responses
-func (n *Node) asyncReElect(ctx context.Context) chan *MajorityRequestVoteResp {
+func (n *nodeImpl) asyncReElect(ctx context.Context) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	consensusChan := make(chan *MajorityRequestVoteResp, 1)

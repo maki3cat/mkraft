@@ -10,10 +10,10 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupTest() (RaftLogsIface, func()) {
-	raftLog := NewRaftLogsImplAndLoad("test.log", zap.NewNop(), NewRaftSerdeImpl())
+func setupTest() (RaftLogs, func()) {
+	raftLog := NewRaftLogsImplAndLoad("./tmp/", zap.NewNop(), NewRaftSerdeImpl())
 	cleanup := func() {
-		os.Remove("test.log")
+		os.RemoveAll("./tmp/")
 	}
 	return raftLog, cleanup
 }
@@ -95,7 +95,7 @@ func TestRaftLog_InitFromLogFile(t *testing.T) {
 				expectedLogs = tt.setupFile(testFile)
 			}
 
-			rl := &WALInspiredRaftLogsImpl{
+			rl := &raftLogs{
 				file:           nil,
 				mutex:          &sync.Mutex{},
 				batchSeparater: '\x1D',
@@ -239,7 +239,8 @@ func TestRaftLog_UpdateLogsInBatch(t *testing.T) {
 }
 
 func TestRaftLogs_GetTermByIndex(t *testing.T) {
-	raftLog := setupTestRaftLog(t)
+	raftLog, cleanup := setupTest()
+	defer cleanup()
 
 	// Setup initial logs
 	err := raftLog.AppendLogsInBatch(context.Background(), [][]byte{[]byte("log1"), []byte("log2")}, 1)
@@ -291,7 +292,8 @@ func TestRaftLogs_GetTermByIndex(t *testing.T) {
 }
 
 func TestRaftLogs_GetLastLogIdxAndTerm(t *testing.T) {
-	raftLog := setupTestRaftLog(t)
+	raftLog, cleanup := setupTest()
+	defer cleanup()
 
 	// Test empty log
 	idx, term := raftLog.GetLastLogIdxAndTerm()
@@ -314,7 +316,8 @@ func TestRaftLogs_GetLastLogIdxAndTerm(t *testing.T) {
 }
 
 func TestRaftLogs_ReadLogsInBatchFromIdx(t *testing.T) {
-	raftLog := setupTestRaftLog(t)
+	raftLog, cleanup := setupTest()
+	defer cleanup()
 
 	// Setup initial logs
 	err := raftLog.AppendLogsInBatch(context.Background(), [][]byte{[]byte("log1"), []byte("log2"), []byte("log3")}, 1)
@@ -372,7 +375,8 @@ func TestRaftLogs_ReadLogsInBatchFromIdx(t *testing.T) {
 }
 
 func TestRaftLogs_CheckPreLog(t *testing.T) {
-	raftLog := setupTestRaftLog(t)
+	raftLog, cleanup := setupTest()
+	defer cleanup()
 
 	// Setup initial logs
 	err := raftLog.AppendLogsInBatch(context.Background(), [][]byte{[]byte("log1"), []byte("log2")}, 1)
@@ -412,17 +416,4 @@ func TestRaftLogs_CheckPreLog(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
-}
-
-func setupTestRaftLog(t *testing.T) RaftLogsIface {
-	tmpFile, err := os.CreateTemp("", "raftlog_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		os.Remove(tmpFile.Name())
-	})
-
-	logger, _ := zap.NewDevelopment()
-	return NewRaftLogsImplAndLoad(tmpFile.Name(), logger, nil)
 }

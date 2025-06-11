@@ -16,13 +16,14 @@ var _ ConfigIface = (*Config)(nil)
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type ConfigIface interface {
+	GetDataDir() string
+
 	GetRPCRequestTimeout() time.Duration
 	GetRPCDeadlineMargin() time.Duration
 	GetElectionTimeout() time.Duration
 	GetLeaderHeartbeatPeriod() time.Duration
 
 	GetRaftNodeRequestBufferSize() int
-	GetRaftLogFilePath() string
 
 	String() string
 	GetgRPCServiceConf() string
@@ -60,6 +61,10 @@ func LoadConfig(filePath string) (ConfigIface, error) {
 	return cfg, nil
 }
 
+func GetDefaultConfig() ConfigIface {
+	return &Config{BasicConfig: *defaultBasicConfig}
+}
+
 var (
 	defaultBasicConfig = &BasicConfig{
 		RaftNodeRequestBufferSize:    RAFT_NODE_REQUEST_BUFFER_SIZE,
@@ -69,6 +74,7 @@ var (
 		LeaderHeartbeatPeriodInMs:    LEADER_HEARTBEAT_PERIOD_IN_MS,
 		GracefulShutdownTimeoutInSec: GRACEFUL_SHUTDOWN_IN_SEC,
 		RPCDeadlineMarginInMicroSec:  RPC_DEADLINE_MARGIN_IN_MICRO_SEC,
+		DataDir:                      DEFAULT_DATA_DIR,
 	}
 )
 
@@ -88,6 +94,8 @@ const (
 	MIN_REMAINING_TIME_FOR_RPC_IN_MS = 50
 
 	GRACEFUL_SHUTDOWN_IN_SEC = 3
+
+	DEFAULT_DATA_DIR = "~/projects/mkraft/data"
 )
 
 type (
@@ -111,7 +119,7 @@ type (
 	}
 
 	BasicConfig struct {
-		RaftLogFilePath           string `yaml:"raft_log_file_path" json:"raft_log_file_path" validate:"nonzero"`
+		DataDir                   string `yaml:"data_dir" json:"data_dir" validate:"nonzero"`
 		RaftNodeRequestBufferSize int    `yaml:"raft_node_request_buffer_size" json:"raft_node_request_buffer_size" validate:"min=1"`
 
 		// RPC timeout
@@ -128,8 +136,8 @@ type (
 	}
 )
 
-func (c *Config) GetRaftLogFilePath() string {
-	return c.BasicConfig.RaftLogFilePath
+func (c *Config) GetDataDir() string {
+	return c.BasicConfig.DataDir
 }
 
 func (c *Config) GetClusterSize() int {

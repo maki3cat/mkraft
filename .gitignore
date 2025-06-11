@@ -6,3 +6,4 @@ vscode/*
 state.tmp
 .idea
 coverage.out
+data/

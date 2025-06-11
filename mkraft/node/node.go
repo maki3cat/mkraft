@@ -37,50 +37,28 @@ func (state NodeState) String() string {
 
 type TermRank int
 
-var _ NodeIface = (*Node)(nil)
+var _ Node = (*nodeImpl)(nil)
 
-type NodeIface interface {
-	// todo: can refer to hashicorp raft for ideas
+type Node interface {
 	// todo: lost requestID and other values in the context
 	VoteRequest(req *utils.RequestVoteInternalReq)
-	// todo: lost requestID and other values in the context
 	AppendEntryRequest(req *utils.AppendEntriesInternalReq)
-	// todo: lost requestID and other values in the context
 	ClientCommand(req *utils.ClientCommandInternalReq)
-
 	Start(ctx context.Context)
 	GracefulStop()
 }
 
 // not only new a class but also catch up statemachine, so it may cost time
-func NewNodeIface(
-	nodeId string,
-	cfg common.ConfigIface,
-	logger *zap.Logger,
-	membership peers.Membership,
-	statemachine plugs.StateMachineIface,
-	raftLog log.RaftLogsIface,
-) NodeIface {
-	return NewNode(nodeId, cfg, logger, membership, statemachine, raftLog)
-}
-
 func NewNode(
 	nodeId string,
 	cfg common.ConfigIface,
 	logger *zap.Logger,
 	membership peers.Membership,
 	statemachine plugs.StateMachineIface,
-	raftLog log.RaftLogsIface,
-) *Node {
+	raftLog log.RaftLogs,
+) Node {
 	bufferSize := cfg.GetRaftNodeRequestBufferSize()
-
-	// todo: can be a problem of these two intializations
-	// zero can be problematic, but these can also be a problem
-	// we can fix with happy path first like start from a new cluster, and never fails
-	// lastAppliedIdx := statemachine.GetLatestAppliedIndex()
-	// lastCommitIdx, _ := raftlog.GetLastLogIdxAndTerm()
-
-	node := &Node{
+	node := &nodeImpl{
 		membership:   membership,
 		raftLog:      raftLog,
 		statemachine: statemachine,
@@ -117,7 +95,8 @@ func NewNode(
 		node.logger.Error("error loading current term and voted for", zap.Error(err))
 		panic(err)
 	}
-	// load logs
+
+	// load index
 	err = node.unsafeLoadIdx()
 	if err != nil {
 		node.logger.Error("error loading index", zap.Error(err))
@@ -127,10 +106,10 @@ func NewNode(
 }
 
 // the Raft Server Node
-type Node struct {
+type nodeImpl struct {
 	membership peers.Membership // managed by the outside overarching server
 
-	raftLog      log.RaftLogsIface // required, persistent
+	raftLog      log.RaftLogs // required, persistent
 	cfg          common.ConfigIface
 	logger       *zap.Logger
 	statemachine plugs.StateMachineIface
@@ -169,35 +148,35 @@ type Node struct {
 	matchIndex map[string]uint64 // map[peerID]matchIndex, index of highest log entry known to be replicated on that server
 }
 
-func (node *Node) GetNodeState() NodeState {
-	node.stateRWLock.RLock()
-	defer node.stateRWLock.RUnlock()
-	return node.state
+func (n *nodeImpl) GetNodeState() NodeState {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	return n.state
 }
 
-func (node *Node) SetNodeState(state NodeState) {
-	node.stateRWLock.Lock()
-	defer node.stateRWLock.Unlock()
-	if node.state == state {
+func (n *nodeImpl) SetNodeState(state NodeState) {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	if n.state == state {
 		return // no change
 	}
-	node.logger.Info("Node state changed",
-		zap.String("nodeID", node.NodeId),
-		zap.String("oldState", node.state.String()),
+	n.logger.Info("Node state changed",
+		zap.String("nodeID", n.NodeId),
+		zap.String("oldState", n.state.String()),
 		zap.String("newState", state.String()))
 
-	node.state = state
+	n.state = state
 }
 
-func (node *Node) Start(ctx context.Context) {
-	go node.RunAsFollower(ctx)
+func (n *nodeImpl) Start(ctx context.Context) {
+	go n.RunAsFollower(ctx)
 }
 
 // gracefully stop the node and cleanup
-func (node *Node) GracefulStop() {
+func (n *nodeImpl) GracefulStop() {
 	// feature: need to check the graceful stop the node itself,
 	// membership graceful stop is handled by the outside overarching server
-	node.logger.Info("graceful stop of node")
+	n.logger.Info("graceful stop of node")
 	// (1) internal dependencies: raftLog, statemachine,
 	// (2) shall the memebrship be internalized in the node ? decide after checking the dynamic membership protocol
 	// (3) others defer functions are suitable and enough for the graceful stop as different states?
@@ -205,22 +184,22 @@ func (node *Node) GracefulStop() {
 
 // todo: reconstruction of the requets-receiving apis,
 // 1) wrap context in; 2) add the return default to reject using the leakage bucket
-func (node *Node) VoteRequest(req *utils.RequestVoteInternalReq) {
+func (n *nodeImpl) VoteRequest(req *utils.RequestVoteInternalReq) {
 	select {
-	case node.requestVoteCh <- req:
+	case n.requestVoteCh <- req:
 	default:
-		node.logger.Warn("request vote channel is full, dropping request", zap.String("nodeID", node.NodeId))
+		n.logger.Warn("request vote channel is full, dropping request", zap.String("nodeID", n.NodeId))
 		req.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 			Err: common.ErrServerBusy,
 		}
 	}
 }
 
-func (node *Node) AppendEntryRequest(req *utils.AppendEntriesInternalReq) {
+func (n *nodeImpl) AppendEntryRequest(req *utils.AppendEntriesInternalReq) {
 	select {
-	case node.appendEntryCh <- req:
+	case n.appendEntryCh <- req:
 	default:
-		node.logger.Warn("append entry channel is full, dropping request", zap.String("nodeID", node.NodeId))
+		n.logger.Warn("append entry channel is full, dropping request", zap.String("nodeID", n.NodeId))
 		req.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 			Err: common.ErrServerBusy,
 		}
@@ -228,7 +207,7 @@ func (node *Node) AppendEntryRequest(req *utils.AppendEntriesInternalReq) {
 }
 
 // todo: shall add the feature of "redirection to the leader"
-func (n *Node) ClientCommand(req *utils.ClientCommandInternalReq) {
+func (n *nodeImpl) ClientCommand(req *utils.ClientCommandInternalReq) {
 	if n.GetNodeState() != StateLeader {
 		n.logger.Warn("Client command received but node is not a leader, dropping request",
 			zap.String("nodeID", n.NodeId))
@@ -261,17 +240,17 @@ func (n *Node) ClientCommand(req *utils.ClientCommandInternalReq) {
 // Restriction: Raft implements this by the election mechanism, i.e., the leader selected shall have all the committed log entries of previous leaders;
 // Impementation: a node cannot vote for a candidate that has 1) lower term of last log entry, or 2) same term of last log entry but lower index of last log entry.
 // return: (voteGranted, shouldUpdateCurrentTermAndVoteFor)
-func (node *Node) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, newTerm uint32, candidateId string) bool {
-	node.stateRWLock.RLock()
-	defer node.stateRWLock.RUnlock()
+func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, newTerm uint32, candidateId string) bool {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
 
-	currentTerm, voteFor := node.CurrentTerm, node.VotedFor
+	currentTerm, voteFor := n.CurrentTerm, n.VotedFor
 	if currentTerm < newTerm {
-		lastLogIdx, lastLogTerm := node.raftLog.GetLastLogIdxAndTerm()
+		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
 		if candidateLastLogTerm >= lastLogTerm && candidateLastLogIdx >= lastLogIdx {
-			err := node.storeCurrentTermAndVotedFor(newTerm, candidateId, true)
+			err := n.storeCurrentTermAndVotedFor(newTerm, candidateId, true)
 			if err != nil {
-				node.logger.Error("error in storeCurrentTermAndVotedFor", zap.Error(err))
+				n.logger.Error("error in storeCurrentTermAndVotedFor", zap.Error(err))
 				panic(err)
 			}
 			return true
@@ -283,10 +262,10 @@ func (node *Node) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, ne
 	return false
 }
 
-func (node *Node) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVoteResponse {
-	voteGranted := node.grantVote(req.LastLogIndex, req.LastLogTerm, req.Term, req.CandidateId)
+func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVoteResponse {
+	voteGranted := n.grantVote(req.LastLogIndex, req.LastLogTerm, req.Term, req.CandidateId)
 	// implementation gap: I think there is no need to differentiate the updated currentTerm or the previous currentTerm
-	currentTerm := node.getCurrentTerm()
+	currentTerm := n.getCurrentTerm()
 	return &rpc.RequestVoteResponse{
 		Term:        currentTerm,
 		VoteGranted: voteGranted,

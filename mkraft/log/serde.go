@@ -8,7 +8,7 @@ import (
 	"io"
 )
 
-type RaftSerdeIface interface {
+type RaftSerde interface {
 	LogSerialize(entry *RaftLogEntry) ([]byte, error)
 	LogDeserialize(data []byte) (*RaftLogEntry, error)
 
@@ -16,8 +16,8 @@ type RaftSerdeIface interface {
 	BatchDeserialize(data []byte) ([]*RaftLogEntry, error)
 }
 
-func NewRaftSerdeImpl() RaftSerdeIface {
-	return &RaftSerdeImpl{
+func NewRaftSerdeImpl() RaftSerde {
+	return &raftSerdeImpl{
 		LogSeparator: '#',
 	}
 }
@@ -27,14 +27,14 @@ const (
 	BatchSeparator = '\x1D' //group separator
 )
 
-type RaftSerdeImpl struct {
+type raftSerdeImpl struct {
 	LogSeparator   byte
 	BatchSeparator byte
 }
 
 // the caller shall ensure the entries are not nil, and the entries are not nil
 // format: crc[data]
-func (rl *RaftSerdeImpl) BatchSerialize(entries []*RaftLogEntry) ([]byte, error) {
+func (rl *raftSerdeImpl) BatchSerialize(entries []*RaftLogEntry) ([]byte, error) {
 
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("no entries to serialize")
@@ -67,7 +67,7 @@ func (rl *RaftSerdeImpl) BatchSerialize(entries []*RaftLogEntry) ([]byte, error)
 }
 
 // deserialize: crc[data]
-func (rl *RaftSerdeImpl) BatchDeserialize(payload []byte) ([]*RaftLogEntry, error) {
+func (rl *raftSerdeImpl) BatchDeserialize(payload []byte) ([]*RaftLogEntry, error) {
 	if len(payload) < 5 { // at least 4 bytes CRC + some data
 		return nil, fmt.Errorf("payload too short")
 	}
@@ -102,7 +102,7 @@ func (rl *RaftSerdeImpl) BatchDeserialize(payload []byte) ([]*RaftLogEntry, erro
 }
 
 // [4 bytes: term][4 bytes: command length][N bytes: command]
-func (rl *RaftSerdeImpl) LogSerialize(entry *RaftLogEntry) ([]byte, error) {
+func (rl *raftSerdeImpl) LogSerialize(entry *RaftLogEntry) ([]byte, error) {
 	if entry == nil {
 		return nil, fmt.Errorf("nil entry")
 	}
@@ -131,7 +131,7 @@ func (rl *RaftSerdeImpl) LogSerialize(entry *RaftLogEntry) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (rl *RaftSerdeImpl) LogDeserialize(buf []byte) (*RaftLogEntry, error) {
+func (rl *raftSerdeImpl) LogDeserialize(buf []byte) (*RaftLogEntry, error) {
 	if buf == nil {
 		return nil, fmt.Errorf("nil buffer")
 	}

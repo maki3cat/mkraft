@@ -1,6 +1,7 @@
 package node
 
 import (
+	"os"
 	"testing"
 
 	"github.com/maki3cat/mkraft/common"
@@ -15,13 +16,17 @@ import (
 func TestGetCurrentState(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
+	mockRaftLog := log.NewMockRaftLogs(ctrl)
 	membership := peers.NewMockMembership(ctrl)
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	node := n.(*nodeImpl)
+
 	node.SetNodeState(StateFollower)
 
 	state := node.GetNodeState()
@@ -29,15 +34,20 @@ func TestGetCurrentState(t *testing.T) {
 }
 
 func TestSetCurrentState(t *testing.T) {
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
+
+	mockRaftLog := log.NewMockRaftLogs(ctrl)
 	membership := peers.NewMockMembership(ctrl)
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	node := n.(*nodeImpl)
 
 	// Test setting to Leader
 	node.SetNodeState(StateLeader)
@@ -55,13 +65,16 @@ func TestSetCurrentState(t *testing.T) {
 func TestIsLeader(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
+	mockRaftLog := log.NewMockRaftLogs(ctrl)
 	membership := peers.NewMockMembership(ctrl)
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	node := n.(*nodeImpl)
 
 	// Test when node is leader
 	node.SetNodeState(StateLeader)
@@ -75,13 +88,16 @@ func TestIsLeader(t *testing.T) {
 func TestIsFollower(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
+	mockRaftLog := log.NewMockRaftLogs(ctrl)
 	membership := peers.NewMockMembership(ctrl)
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	node := n.(*nodeImpl)
 
 	// Test when node is follower
 	node.SetNodeState(StateFollower)
@@ -95,13 +111,16 @@ func TestIsFollower(t *testing.T) {
 func TestIsCandidate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
+	mockRaftLog := log.NewMockRaftLogs(ctrl)
 	membership := peers.NewMockMembership(ctrl)
 	config := common.NewMockConfigIface(ctrl)
 	statemachine := plugs.NewMockStateMachineIface(ctrl)
 	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	config.EXPECT().GetDataDir().Return("./tmp/")
+	defer os.RemoveAll("./tmp/")
 
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	node := n.(*nodeImpl)
 
 	// Test when node is candidate
 	node.SetNodeState(StateCandidate)

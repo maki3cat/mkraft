@@ -40,13 +40,12 @@ func TestApplyAllLaggedCommitedLogs(t *testing.T) {
 }
 
 func TestApplyAllLaggedCommitedLogs_CommitIdxEqualsLastApplied(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockMembership := peers.NewMockMembership(ctrl)
-	node := getMockNode(mockMembership)
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
+
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 
 	node.stateRWLock.Lock()
 	node.commitIndex = 5
@@ -62,53 +61,56 @@ func TestApplyAllLaggedCommitedLogs_CommitIdxEqualsLastApplied(t *testing.T) {
 }
 
 func TestApplyAllLaggedCommitedLogs_CommitIdxGreaterThanLastApplied(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockMembership := peers.NewMockMembership(ctrl)
-	node := getMockNode(mockMembership)
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
+
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	stateMachine := plugs.NewMockStateMachineIface(ctrl)
-	mockLogs := log.NewMockRaftLogsIface(ctrl)
-	node.raftLog = mockLogs
-	node.statemachine = stateMachine
 	node.commitIndex = 10
 	node.lastApplied = 5
-	expectedLogs := make([]*log.RaftLogEntry, node.commitIndex-node.lastApplied)
-	for i := range node.commitIndex - node.lastApplied {
-		expectedLogs[i] = &log.RaftLogEntry{
-			Term:     1,
-			Commands: fmt.Appendf(nil, "test command %d", i),
-		}
-	}
+
+	mockLogs := node.raftLog.(*log.MockRaftLogs)
+	mockStateMachine := node.statemachine.(*plugs.MockStateMachineIface)
+
 	t.Run("success case - correct number of logs", func(t *testing.T) {
-		fmt.Println("expectedLogs", len(expectedLogs))
-		mockLogs.EXPECT().ReadLogsInBatchFromIdx(gomock.Any()).Return(expectedLogs, nil)
-		stateMachine.EXPECT().BatchApplyCommand(gomock.Any(), gomock.Any()).Return(nil, nil)
+		expectedLogs := make([]*log.RaftLogEntry, 5) // 10 - 5 = 5 logs
+		for i := range expectedLogs {
+			expectedLogs[i] = &log.RaftLogEntry{
+				Term:     1,
+				Commands: []byte(fmt.Sprintf("test command %d", i)),
+			}
+		}
+
+		mockLogs.EXPECT().ReadLogsInBatchFromIdx(uint64(6)).Return(expectedLogs, nil)
+		mockStateMachine.EXPECT().BatchApplyCommand(gomock.Any(), gomock.Any()).Return(nil, nil)
 
 		err := node.applyAllLaggedCommitedLogs(ctx)
 		assert.NoError(t, err)
 
 		commitIdx, lastApplied := node.getCommitIdxAndLastApplied()
-		fmt.Println("commitIdx", commitIdx)
-		fmt.Println("lastApplied", lastApplied)
 		assert.Equal(t, uint64(10), commitIdx)
 		assert.Equal(t, uint64(10), lastApplied)
 	})
 
 	t.Run("error case - incorrect number of logs", func(t *testing.T) {
-		// Add an extra log entry that shouldn't be there
-		extraLogs := append(expectedLogs, &log.RaftLogEntry{
-			Term:     1,
-			Commands: []byte("extra log that shouldn't exist"),
-		})
 		node.commitIndex = 10
 		node.lastApplied = 5
-		mockLogs.EXPECT().ReadLogsInBatchFromIdx(gomock.Any()).Return(extraLogs, nil)
-		stateMachine.EXPECT().BatchApplyCommand(gomock.Any(), gomock.Any()).Return(nil, nil)
 
-		assert.Panics(t, func() { node.applyAllLaggedCommitedLogs(ctx) })
+		// Return 6 logs when we expect 5
+		extraLogs := make([]*log.RaftLogEntry, 6)
+		for i := range extraLogs {
+			extraLogs[i] = &log.RaftLogEntry{
+				Term:     1,
+				Commands: []byte(fmt.Sprintf("test command %d", i)),
+			}
+		}
+
+		mockLogs.EXPECT().ReadLogsInBatchFromIdx(uint64(6)).Return(extraLogs, nil)
+		mockStateMachine.EXPECT().BatchApplyCommand(gomock.Any(), gomock.Any()).Return(nil, nil)
+		assert.Panics(t, func() {
+			node.applyAllLaggedCommitedLogs(ctx)
+		})
 
 	})
 }

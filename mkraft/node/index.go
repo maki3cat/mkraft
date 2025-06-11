@@ -9,30 +9,33 @@ import (
 	"go.uber.org/zap"
 )
 
-// maki: this gap is a tricky part, discuss with the prof
 // implementation gap: the commitIdx and lastApplied shall be persisted in implementation
+// maki: this gap is a tricky part, discuss with the prof
 // if not, if all nodes shutdown, the commitIdx and lastApplied will be lost
-func (n *Node) getIdxFileName() string {
-	// todo: add a data directory to store this file and raft logs
-	return "index.rft"
+func (n *nodeImpl) getIdxFileName() string {
+	dataDir := n.cfg.GetDataDir()
+	return fmt.Sprintf("%s/index.rft", dataDir)
 }
 
-// using rename to ensure atomicity of file writing
-func (n *Node) unsafeSaveIdx() error {
-	// use create and rename to avoid data corruption
-	// create index_timestamp.rft
-	idxFileName := fmt.Sprintf("index_%s.rft", time.Now().Format("20060102150405"))
+func (n *nodeImpl) unsafeSaveIdx() error {
+	dir := n.cfg.GetDataDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	idxFileName := fmt.Sprintf("%s/index_%s.rft", dir, time.Now().Format("20060102150405"))
+	n.logger.Debug("saving index", zap.String("idxFileName", idxFileName))
+
 	buf := make([]byte, 0, 32)
 	buf = fmt.Appendf(buf, "%d,%d\n", n.commitIndex, n.lastApplied)
 	err := os.WriteFile(idxFileName, buf, 0644)
 	if err != nil {
 		return err
 	}
-	// rename the file to index.rft
+	// using rename to ensure atomicity of file writing
 	return os.Rename(idxFileName, n.getIdxFileName())
 }
 
-func (n *Node) unsafeLoadIdx() error {
+func (n *nodeImpl) unsafeLoadIdx() error {
 	if _, err := os.Stat(n.getIdxFileName()); os.IsNotExist(err) {
 		// default values
 		n.commitIndex = 0
@@ -57,13 +60,13 @@ func (n *Node) unsafeLoadIdx() error {
 }
 
 // section1: for indices of commidID and lastApplied which are owned by all the nodes
-func (n *Node) getCommitIdxAndLastApplied() (uint64, uint64) {
+func (n *nodeImpl) getCommitIdxAndLastApplied() (uint64, uint64) {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 	return n.commitIndex, n.lastApplied
 }
 
-func (n *Node) getCommitIdx() uint64 {
+func (n *nodeImpl) getCommitIdx() uint64 {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 	return n.commitIndex
@@ -78,7 +81,7 @@ func (n *Node) getCommitIdx() uint64 {
 // not sure this is a good idea, but this design makes the implementation SIMPLE
 // todo: important
 // so we can prove this 1) test cases; 2) comparison with Hashicorp Raft implementation
-func (n *Node) incrementCommitIdx(numberOfCommand uint64) error {
+func (n *nodeImpl) incrementCommitIdx(numberOfCommand uint64) error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	n.commitIndex = n.commitIndex + numberOfCommand
@@ -88,7 +91,7 @@ func (n *Node) incrementCommitIdx(numberOfCommand uint64) error {
 	return n.unsafeSaveIdx()
 }
 
-func (n *Node) incrementLastApplied(numberOfCommand uint64) error {
+func (n *nodeImpl) incrementLastApplied(numberOfCommand uint64) error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	n.lastApplied = n.lastApplied + numberOfCommand
@@ -99,7 +102,7 @@ func (n *Node) incrementLastApplied(numberOfCommand uint64) error {
 	return n.unsafeSaveIdx()
 }
 
-func (n *Node) unsafeCheckIndexIntegrity() error {
+func (n *nodeImpl) unsafeCheckIndexIntegrity() error {
 	if n.commitIndex < n.lastApplied {
 		return common.ErrInvariantsBroken
 	}
@@ -110,7 +113,7 @@ func (n *Node) unsafeCheckIndexIntegrity() error {
 // maki: Updating a follower's match/next index is independent of whether consensus is reached.
 // Updating matchIndex/nextIndex is a per-follower operation.
 // Reaching consensus (a majority of nodes having the same entry) is a cluster-wide operation.
-func (n *Node) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
+func (n *nodeImpl) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 
@@ -125,8 +128,6 @@ func (n *Node) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
 	} else {
 		n.nextIndex[nodeID] = logCnt + 1
 	}
-
-	// todo: how to init matchIndex after a total crash?
 	// directly equal the matchIndex to the nextIndex - 1,
 	// so that it can be updated to a correct value even from 0 in the first place
 	n.matchIndex[nodeID] = n.nextIndex[nodeID] - 1
@@ -134,11 +135,12 @@ func (n *Node) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
 
 // important invariant: matchIndex[follower] ≤ nextIndex[follower] - 1
 // if the matchIndex is less than nextIndex-1, appendEntries will fail and the follower's nextIndex will be decremented
-func (n *Node) decrPeerIdxAfterLogRepli(nodeID string) {
+func (n *nodeImpl) decrPeerIdxAfterLogRepli(nodeID string) {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 
-	// todo: there can be improvement of efficiency here, refer to the paper page 8 first paragraph
+	// todo: feature mentioned by the paper,
+	// there can be improvement of efficiency here, refer to the paper page 8 first paragraph
 	n.logger.Warn("fixing inconsistent logs for peer",
 		zap.String("nodeID", nodeID))
 
@@ -149,7 +151,7 @@ func (n *Node) decrPeerIdxAfterLogRepli(nodeID string) {
 	}
 }
 
-func (n *Node) getPeersNextIndex(nodeID string) uint64 {
+func (n *nodeImpl) getPeersNextIndex(nodeID string) uint64 {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 	if index, ok := n.nextIndex[nodeID]; ok {
@@ -161,6 +163,6 @@ func (n *Node) getPeersNextIndex(nodeID string) uint64 {
 }
 
 // returns nextIndex, matchIndex
-func (n *Node) getInitDefaultValuesForPeer() (uint64, uint64) {
+func (n *nodeImpl) getInitDefaultValuesForPeer() (uint64, uint64) {
 	return n.raftLog.GetLastLogIdx() + 1, 0
 }

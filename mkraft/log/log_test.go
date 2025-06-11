@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
 )
 
 // Complex-Case-1: test atomicity, and handling of corrupt writes
@@ -19,11 +18,12 @@ func TestRaftLogs_Atomicity(t *testing.T) {
 	partialLen := 3
 
 	// step-1: write log1, log2, log3, log4, log5; and then truncate the file to 3 bytes
-	err := raftLog.AppendLogsInBatch(context.Background(), [][]byte{[]byte("log1"), []byte("log2"), []byte("log3"), []byte("log4"), []byte("log5")}, 1)
+	err := raftLog.AppendLogsInBatch(
+		context.Background(), [][]byte{[]byte("log1"), []byte("log2"), []byte("log3"), []byte("log4"), []byte("log5")}, 1)
 	assert.NoError(t, err)
 
 	// Type assert to access internal file field
-	impl := raftLog.(*WALInspiredRaftLogsImpl)
+	impl := raftLog.(*raftLogs)
 	impl.file.Truncate(int64(partialLen))
 	impl.file.Sync()
 	fi, err := impl.file.Stat()
@@ -41,8 +41,9 @@ func TestRaftLogs_Atomicity(t *testing.T) {
 	impl.file.Close()
 
 	// step-3: restart the raftLog, should only get 5 logs;
-	raftLog = NewRaftLogsImplAndLoad("test.log", zap.NewNop(), NewRaftSerdeImpl())
-	impl = raftLog.(*WALInspiredRaftLogsImpl)
+	raftLog, cleanup = setupTest()
+	defer cleanup()
+	impl = raftLog.(*raftLogs)
 	// fmt.Println("len(impl.logs)", len(impl.logs))
 	assert.Equal(t, uint64(5), impl.GetLastLogIdx())
 	entries, err := raftLog.ReadLogsInBatchFromIdx(1)
@@ -93,4 +94,3 @@ func TestRaftLogs_UpdateWithOverwrite(t *testing.T) {
 	assert.Equal(t, []byte("log10"), entries[2].Commands)
 	assert.Equal(t, []byte("log12"), entries[3].Commands)
 }
-

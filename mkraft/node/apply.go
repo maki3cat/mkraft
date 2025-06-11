@@ -30,7 +30,7 @@ import (
 // first step is log replication, second step is apply to the state machine
 // and this is the 2nd step in the pipeline of log (1-replication, 2-apply)
 // shall NOT reset the chan inside this function because the main thread may write to it simultaneously
-func (n *Node) leaderWorkerForLogApplication(ctx context.Context) {
+func (n *nodeImpl) leaderWorkerForLogApplication(ctx context.Context) {
 	// Case-1: apply lagged commited logs
 	err := n.applyAllLaggedCommitedLogs(ctx)
 	if err != nil {
@@ -61,7 +61,7 @@ func (n *Node) leaderWorkerForLogApplication(ctx context.Context) {
 // Case-3: AS A Leader, but stale
 // implementation gap:
 // it can give up serving clients, just drain/return no leader leaderApplyCh, and leave the work to follower
-func (n *Node) cleanupApplyLogsBeforeToFollower() {
+func (n *nodeImpl) cleanupApplyLogsBeforeToFollower() {
 	utils.DrainChannel(n.leaderApplyCh, n.cfg.GetRaftNodeRequestBufferSize())
 }
 
@@ -69,7 +69,7 @@ func (n *Node) cleanupApplyLogsBeforeToFollower() {
 // Case-4: AS A Follower/Candidate
 // When a follower/candidate commits a new log
 // no-leader-WORKER-1
-func (n *Node) noleaderWorkerToApplyLogs(ctx context.Context, workerWaitGroup *sync.WaitGroup) {
+func (n *nodeImpl) noleaderWorkerToApplyLogs(ctx context.Context, workerWaitGroup *sync.WaitGroup) {
 	defer workerWaitGroup.Done()
 
 	tickerTriggered := time.NewTicker(time.Duration(100 * time.Microsecond)) // empirical number
@@ -104,13 +104,13 @@ func (n *Node) noleaderWorkerToApplyLogs(ctx context.Context, workerWaitGroup *s
 // Case-5: As a candidate, and then it becomes a leader
 // it doesn't needs to apply the logs to the state machine which may be slow and the new leader need to start heartbeat soon
 // so it just drains the noleaderApplySignalCh
-func (n *Node) cleanupApplyLogsBeforeToLeader() {
+func (n *nodeImpl) cleanupApplyLogsBeforeToLeader() {
 	utils.DrainChannel(n.noleaderApplySignalCh, n.cfg.GetRaftNodeRequestBufferSize())
 }
 
 // ------------------- BASIC OPERATIONS --------------------------------
 // apply the committed yet not applied logs to the state machine
-func (n *Node) applyAllLaggedCommitedLogs(ctx context.Context) error {
+func (n *nodeImpl) applyAllLaggedCommitedLogs(ctx context.Context) error {
 	if len(n.leaderApplyCh) > 0 {
 		n.logger.Error("leaderApplyCh is not empty, this should not happen")
 		// maki: panic seems to be a bad idea, but this is a fatal error

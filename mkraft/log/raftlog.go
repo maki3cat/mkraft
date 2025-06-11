@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/maki3cat/mkraft/common"
@@ -16,9 +17,9 @@ import (
 // IMPLEMENTATION GAP:
 // Since the paper doesn't specify the details of raftlog, my implementation refers to postgres's WAL in some ways.
 // Since I need to do log compaction, while postgres's WAL doesn't, I need to make some new designs for the raftlog.
-var _ RaftLogsIface = (*WALInspiredRaftLogsImpl)(nil)
+var _ RaftLogs = (*raftLogs)(nil)
 
-type RaftLogsIface interface {
+type RaftLogs interface {
 	// todo: shall change all uint/uint64 to types that really make sense in golang system, consider len(logs) cannot be uint64
 
 	// the raft log iface is designed to be handled in batching from the first place
@@ -42,7 +43,13 @@ type CatchupLogs struct {
 	Entries      []*RaftLogEntry
 }
 
-func NewRaftLogsImplAndLoad(filePath string, logger *zap.Logger, serde RaftSerdeIface) RaftLogsIface {
+func NewRaftLogsImplAndLoad(dataPath string, logger *zap.Logger, serde RaftSerde) RaftLogs {
+
+	filePath := filepath.Join(dataPath, "raft.log")
+	if err := os.MkdirAll(dataPath, 0755); err != nil {
+		panic(err)
+	}
+
 	if serde == nil {
 		serde = NewRaftSerdeImpl()
 	}
@@ -61,7 +68,7 @@ func NewRaftLogsImplAndLoad(filePath string, logger *zap.Logger, serde RaftSerde
 	}
 
 	batchSeparator := byte('\x1D') // group separator
-	raftLogs := &WALInspiredRaftLogsImpl{
+	raftLogs := &raftLogs{
 		file:           file,
 		mutex:          &sync.Mutex{},
 		batchSeparater: batchSeparator,
@@ -83,18 +90,18 @@ type RaftLogEntry struct {
 
 // Each individual record in a WAL file is protected by a CRC-32C (32-bit) check that allows us to tell if record contents are correct.
 // The CRC value is set when we write each WAL record and checked during crash recovery, archive recovery and replication.
-type WALInspiredRaftLogsImpl struct {
+type raftLogs struct {
 	logs           []*RaftLogEntry
 	file           *os.File
 	mutex          *sync.Mutex
 	logger         *zap.Logger
-	serde          RaftSerdeIface
+	serde          RaftSerde
 	batchSeparater byte
 	batchSize      int
 }
 
 // if the index < 1, the term is 0
-func (rl *WALInspiredRaftLogsImpl) GetTermByIndex(index uint64) (uint32, error) {
+func (rl *raftLogs) GetTermByIndex(index uint64) (uint32, error) {
 	if index == 0 {
 		return 0, nil
 	}
@@ -107,7 +114,7 @@ func (rl *WALInspiredRaftLogsImpl) GetTermByIndex(index uint64) (uint32, error) 
 	return rl.logs[sliceIndex].Term, nil
 }
 
-func (rl *WALInspiredRaftLogsImpl) GetLastLogIdx() uint64 {
+func (rl *raftLogs) GetLastLogIdx() uint64 {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	// todo: since it uses slice, the uint64 is not necessary
@@ -115,7 +122,7 @@ func (rl *WALInspiredRaftLogsImpl) GetLastLogIdx() uint64 {
 }
 
 // index is included
-func (rl *WALInspiredRaftLogsImpl) ReadLogsInBatchFromIdx(index uint64) ([]*RaftLogEntry, error) {
+func (rl *raftLogs) ReadLogsInBatchFromIdx(index uint64) ([]*RaftLogEntry, error) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	sliceIndex := int(index) - 1
@@ -128,7 +135,7 @@ func (rl *WALInspiredRaftLogsImpl) ReadLogsInBatchFromIdx(index uint64) ([]*Raft
 }
 
 // index starts from 1
-func (rl *WALInspiredRaftLogsImpl) GetLastLogIdxAndTerm() (uint64, uint32) {
+func (rl *raftLogs) GetLastLogIdxAndTerm() (uint64, uint32) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	if len(rl.logs) == 0 {
@@ -140,7 +147,7 @@ func (rl *WALInspiredRaftLogsImpl) GetLastLogIdxAndTerm() (uint64, uint32) {
 	return uint64(index), lastLog.Term
 }
 
-func (rl *WALInspiredRaftLogsImpl) AppendLogsInBatch(ctx context.Context, commandList [][]byte, term uint32) error {
+func (rl *raftLogs) AppendLogsInBatch(ctx context.Context, commandList [][]byte, term uint32) error {
 	if len(commandList) == 0 {
 		return nil
 	}
@@ -149,7 +156,7 @@ func (rl *WALInspiredRaftLogsImpl) AppendLogsInBatch(ctx context.Context, comman
 	return rl.unsafeAppendLogsInBatch(commandList, term)
 }
 
-func (rl *WALInspiredRaftLogsImpl) UpdateLogsInBatch(ctx context.Context, preLogIndex uint64, commandList [][]byte, term uint32) error {
+func (rl *raftLogs) UpdateLogsInBatch(ctx context.Context, preLogIndex uint64, commandList [][]byte, term uint32) error {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	if len(rl.logs) < int(preLogIndex) || rl.logs[preLogIndex-1].Term != term {
@@ -192,7 +199,7 @@ func (rl *WALInspiredRaftLogsImpl) UpdateLogsInBatch(ctx context.Context, preLog
 	return rl.unsafeAppendLogsInBatch(commandList, term)
 }
 
-func (rl *WALInspiredRaftLogsImpl) CheckPreLog(preLogIndex uint64, term uint32) bool {
+func (rl *raftLogs) CheckPreLog(preLogIndex uint64, term uint32) bool {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	return preLogIndex == uint64(len(rl.logs)) && rl.logs[preLogIndex-1].Term == uint32(term)
@@ -200,7 +207,7 @@ func (rl *WALInspiredRaftLogsImpl) CheckPreLog(preLogIndex uint64, term uint32) 
 
 // load the logs from the file
 // handle the corrupt partial data
-func (rl *WALInspiredRaftLogsImpl) initFromLogFile() error {
+func (rl *raftLogs) initFromLogFile() error {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 
@@ -229,7 +236,7 @@ func (rl *WALInspiredRaftLogsImpl) initFromLogFile() error {
 }
 
 // read all the logs from the file into the memory of rl.logs
-func (rl *WALInspiredRaftLogsImpl) unsafeLoadLogs() error {
+func (rl *raftLogs) unsafeLoadLogs() error {
 
 	if len(rl.logs) > 0 {
 		panic("loading logs when logs are not empty")
@@ -290,7 +297,7 @@ func (rl *WALInspiredRaftLogsImpl) unsafeLoadLogs() error {
 // for example we want to append 12345, then after 123 it crashes, and we retry, and end up with 12312345 which totally mess up the log
 // so we need to serialize and crc the write as a whole, instead of a unit of it which is a log
 // batchBinary+batchSeparator+batchBinary+batchSeparator+batchBinary
-func (rl *WALInspiredRaftLogsImpl) unsafeAppendLogsInBatch(commandList [][]byte, term uint32) error {
+func (rl *raftLogs) unsafeAppendLogsInBatch(commandList [][]byte, term uint32) error {
 	entries := make([]*RaftLogEntry, len(commandList))
 	for idx, command := range commandList {
 		entry := &RaftLogEntry{

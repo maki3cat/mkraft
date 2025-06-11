@@ -5,27 +5,22 @@ import (
 	"testing"
 
 	"github.com/maki3cat/mkraft/common"
-	"github.com/maki3cat/mkraft/mkraft/log"
-	"github.com/maki3cat/mkraft/mkraft/peers"
-	"github.com/maki3cat/mkraft/mkraft/plugs"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/mock/gomock"
-	"go.uber.org/zap"
 )
 
 func TestGetIdxFileName(t *testing.T) {
-	node := &Node{}
-	assert.Equal(t, "index.rft", node.getIdxFileName())
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
+	assert.Contains(t, node.getIdxFileName(), "index.rft")
 }
 
 func TestUnsafeSaveAndLoadIdx(t *testing.T) {
-	// Setup
-	node := &Node{
-		commitIndex: 5,
-		lastApplied: 3,
-	}
-	// Cleanup
-	defer os.Remove(node.getIdxFileName())
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
+
+	// Set test values
+	node.commitIndex = 5
+	node.lastApplied = 3
 
 	// Test save
 	err := node.unsafeSaveIdx()
@@ -36,7 +31,7 @@ func TestUnsafeSaveAndLoadIdx(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create new node to test load
-	newNode := &Node{}
+	newNode := newMockNode(t)
 	err = newNode.unsafeLoadIdx()
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(5), newNode.commitIndex)
@@ -44,17 +39,8 @@ func TestUnsafeSaveAndLoadIdx(t *testing.T) {
 }
 
 func TestGetCommitIdxAndLastApplied(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
-	membership := peers.NewMockMembership(ctrl)
-	config := common.NewMockConfigIface(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
-	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
-
-	// Set up expected call to GetRaftNodeRequestBufferSize
-
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 
 	// Set test values
 	node.commitIndex = 10
@@ -66,15 +52,9 @@ func TestGetCommitIdxAndLastApplied(t *testing.T) {
 }
 
 func TestGetCommitIdx(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
-	membership := peers.NewMockMembership(ctrl)
-	config := common.NewMockConfigIface(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
-	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node.commitIndex = 15
 
 	commitIdx := node.getCommitIdx()
@@ -82,16 +62,8 @@ func TestGetCommitIdx(t *testing.T) {
 }
 
 func TestIncrementCommitIdx(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
-	membership := peers.NewMockMembership(ctrl)
-	config := common.NewMockConfigIface(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
-	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
-
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
-	defer os.Remove(node.getIdxFileName())
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 
 	t.Run("successful increment", func(t *testing.T) {
 		node.commitIndex = 5
@@ -110,17 +82,8 @@ func TestIncrementCommitIdx(t *testing.T) {
 }
 
 func TestIncrementLastApplied(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
-	membership := peers.NewMockMembership(ctrl)
-	config := common.NewMockConfigIface(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
-	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
-
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
-	defer os.Remove(node.getIdxFileName())
-
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 	t.Run("successful increment", func(t *testing.T) {
 		node.commitIndex = 10
 		node.lastApplied = 5
@@ -138,15 +101,8 @@ func TestIncrementLastApplied(t *testing.T) {
 }
 
 func TestIncrementPeersNextIndexOnSuccess(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
-	membership := peers.NewMockMembership(ctrl)
-	config := common.NewMockConfigIface(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
-	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
-
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 
 	// Test first time increment
 	node.incrPeerIdxAfterLogRepli("peer1", 3)
@@ -160,15 +116,9 @@ func TestIncrementPeersNextIndexOnSuccess(t *testing.T) {
 }
 
 func TestDecrementPeersNextIndexOnFailure(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
-	membership := peers.NewMockMembership(ctrl)
-	config := common.NewMockConfigIface(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
-	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node.nextIndex["peer1"] = 5
 
 	node.decrPeerIdxAfterLogRepli("peer1")
@@ -181,17 +131,9 @@ func TestDecrementPeersNextIndexOnFailure(t *testing.T) {
 }
 
 func TestGetPeersNextIndex(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
-	mockRaftLog.EXPECT().GetLastLogIdx().Return(uint64(0))
-	membership := peers.NewMockMembership(ctrl)
-	config := common.NewMockConfigIface(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
-	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
-
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
 	node.nextIndex["peer1"] = 10
 
 	// Test existing peer
@@ -204,17 +146,8 @@ func TestGetPeersNextIndex(t *testing.T) {
 }
 
 func TestGetInitDefaultValuesForPeer(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockRaftLog := log.NewMockRaftLogsIface(ctrl)
-	mockRaftLog.EXPECT().GetLastLogIdx().Return(uint64(0))
-	membership := peers.NewMockMembership(ctrl)
-	config := common.NewMockConfigIface(ctrl)
-	statemachine := plugs.NewMockStateMachineIface(ctrl)
-	config.EXPECT().GetRaftNodeRequestBufferSize().Return(10)
-
-	node := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	node := newMockNode(t)
+	defer cleanUpTmpDir()
 
 	nextIndex, matchIndex := node.getInitDefaultValuesForPeer()
 	assert.Equal(t, uint64(1), nextIndex) // Assuming GetLastLogIdx returns 0 for empty log
