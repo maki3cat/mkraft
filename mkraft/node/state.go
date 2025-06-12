@@ -22,9 +22,9 @@ func (n *nodeImpl) getStateFilePath() string {
 
 func (n *nodeImpl) getTmpStateFilePath() string {
 	dir := n.cfg.GetDataDir()
-	formatted := time.Now().Format("20060102150405.000")
+	formatted := time.Now().Format("20060102150405")
 	numericTimestamp := formatted[:len(formatted)-4] + formatted[len(formatted)-3:]
-	fileName := fmt.Sprintf("%s_%s.tmp", n.getStateFileName(), numericTimestamp)
+	fileName := fmt.Sprintf("%s_%s", n.getStateFileName(), numericTimestamp)
 	return filepath.Join(dir, fileName)
 }
 
@@ -32,16 +32,17 @@ func (n *nodeImpl) getTmpStateFilePath() string {
 func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
+	path := n.getStateFilePath()
 
 	// if not exists, initialize to default values
-	if _, err := os.Stat(n.getStateFileName()); os.IsNotExist(err) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		n.logger.Info("raft state file does not exist, initializing to default values")
 		n.CurrentTerm = 0
 		n.VotedFor = ""
 		return nil
 	}
 
-	file, err := os.Open(n.getStateFileName())
+	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			n.logger.Info("raft state file does not exist, initializing to default values")
@@ -66,13 +67,6 @@ func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 
 	n.CurrentTerm = term
 	n.VotedFor = voteFor
-
-	n.logger.Debug("loadCurrentTermAndVotedFor",
-		zap.String("fileName", n.getStateFileName()),
-		zap.Int("bytesRead", cnt),
-		zap.Uint32("term", n.CurrentTerm),
-		zap.String("voteFor", n.VotedFor),
-	)
 	return nil
 }
 
