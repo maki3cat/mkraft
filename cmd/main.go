@@ -16,7 +16,7 @@ import (
 func main() {
 
 	// basics
-	logger, err := common.CreateLogger()
+	logger, err := zap.NewDevelopment()
 	if err != nil {
 		panic(err)
 	}
@@ -24,7 +24,6 @@ func main() {
 
 	// config
 	path := "./config/base.yaml"
-
 	pathInArgs := flag.String("c", "", "the path of the config file")
 	flag.Parse()
 	pathInEnv := os.Getenv("MKRAFT_CONFIG_PATH") // env has higher priority than args

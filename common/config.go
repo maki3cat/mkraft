@@ -14,11 +14,9 @@ import (
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-// todo: how about removing the interface abstraction, and just use the struct directly?
-
 func LoadConfig(filePath string) (*Config, error) {
 	// start with default config
-	cfg := &Config{BasicConfig: *defaultBasicConfig}
+	cfg := GetDefaultConfig()
 
 	// yaml config
 	data, err := os.ReadFile(filePath)
@@ -42,7 +40,10 @@ func LoadConfig(filePath string) (*Config, error) {
 }
 
 func GetDefaultConfig() *Config {
-	return &Config{BasicConfig: *defaultBasicConfig}
+	return &Config{
+		BasicConfig: *defaultBasicConfig,
+		Monitoring:  *defaultMonitoring,
+	}
 }
 
 var (
@@ -55,6 +56,9 @@ var (
 		GracefulShutdownTimeoutInSec: GRACEFUL_SHUTDOWN_IN_SEC,
 		RPCDeadlineMarginInMicroSec:  RPC_DEADLINE_MARGIN_IN_MICRO_SEC,
 		DataDir:                      DEFAULT_DATA_DIR,
+	}
+	defaultMonitoring = &Monitoring{
+		LogLevel: "dev",
 	}
 )
 
@@ -83,6 +87,11 @@ type (
 		BasicConfig BasicConfig    `yaml:"basic_config" json:"basic_config"`
 		Membership  Membership     `yaml:"membership" json:"membership" validate:"nonzero"`
 		GRPC        map[string]any `yaml:"grpc" json:"grpc"`
+		Monitoring  Monitoring     `yaml:"monitoring" json:"monitoring"`
+	}
+
+	Monitoring struct {
+		LogLevel string `yaml:"log_level" json:"log_level" validate:"nonzero"`
 	}
 
 	Membership struct {
