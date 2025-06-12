@@ -3,17 +3,13 @@ package node
 import (
 	"context"
 	"testing"
-
-	"go.uber.org/zap"
 )
 
 func TestAsyncSendElection(t *testing.T) {
 	t.Run("update term error", func(t *testing.T) {
 		testCtx := context.Background()
-		n := &nodeImpl{
-			NodeId: "test",
-			logger: zap.NewNop(),
-		}
+		n := newMockNode(t)
+		defer cleanUpTmpDir()
 
 		// Mock error case for updateCurrentTermAndVotedForAsCandidate
 		n.stateRWLock.Lock()
