@@ -18,8 +18,6 @@ protogen:
 
 mockgen: clean-mocks
 	mockgen -source=rpc/service_grpc.pb.go -destination=./rpc/service_mock.go -package rpc
-	mockgen -source=common/config.go -destination=./common/config_mock.go -package common
-
 	mockgen -source=mkraft/node/node.go -destination=./mkraft/node/node_mock.go -package node
 
 	mockgen -source=mkraft/peers/client.go -destination=./mkraft/peers/client_mock.go -package peers

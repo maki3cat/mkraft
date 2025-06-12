@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func NewServer(cfg common.ConfigManager, logger *zap.Logger) (*Server, error) {
+func NewServer(cfg *common.Config, logger *zap.Logger) (*Server, error) {
 	membershipMgr, err := peers.NewMembershipWithStaticConfig(logger, cfg)
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func NewServer(cfg common.ConfigManager, logger *zap.Logger) (*Server, error) {
 
 type Server struct {
 	logger     *zap.Logger
-	cfg        common.ConfigManager
+	cfg        *common.Config
 	node       node.Node
 	membership peers.Membership
 

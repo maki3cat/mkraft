@@ -12,32 +12,11 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var _ ConfigManager = (*Config)(nil)
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // todo: how about removing the interface abstraction, and just use the struct directly?
-type ConfigManager interface {
-	GetDataDir() string
 
-	GetRPCRequestTimeout() time.Duration
-	GetRPCDeadlineMargin() time.Duration
-	GetElectionTimeout() time.Duration
-	GetLeaderHeartbeatPeriod() time.Duration
-
-	GetRaftNodeRequestBufferSize() int
-
-	String() string
-	GetgRPCServiceConf() string
-	GetGracefulShutdownTimeout() time.Duration
-
-	// membership related
-	GetMembership() Membership
-	GetClusterSize() int
-
-	Validate() error
-}
-
-func LoadConfig(filePath string) (ConfigManager, error) {
+func LoadConfig(filePath string) (*Config, error) {
 	// start with default config
 	cfg := &Config{BasicConfig: *defaultBasicConfig}
 
@@ -62,7 +41,7 @@ func LoadConfig(filePath string) (ConfigManager, error) {
 	return cfg, nil
 }
 
-func GetDefaultConfig() ConfigManager {
+func GetDefaultConfig() *Config {
 	return &Config{BasicConfig: *defaultBasicConfig}
 }
 
@@ -96,7 +75,7 @@ const (
 
 	GRACEFUL_SHUTDOWN_IN_SEC = 3
 
-	DEFAULT_DATA_DIR = "~/projects/mkraft/data"
+	DEFAULT_DATA_DIR = "."
 )
 
 type (
@@ -136,6 +115,10 @@ type (
 		LeaderHeartbeatPeriodInMs int `yaml:"leader_heartbeat_period_in_ms" json:"leader_heartbeat_period_in_ms" validate:"min=1"`
 	}
 )
+
+func (c *Config) SetDataDir(dataDir string) {
+	c.BasicConfig.DataDir = dataDir
+}
 
 func (c *Config) GetDataDir() string {
 	return c.BasicConfig.DataDir

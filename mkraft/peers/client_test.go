@@ -19,10 +19,8 @@ func TestNewRobustClientImpl(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockConfig := common.NewMockConfigManager(ctrl)
-	mockConfig.EXPECT().GetgRPCServiceConf().Return(`{"loadBalancingPolicy":"round_robin"}`).AnyTimes()
-	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
-	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
+	mockConfig := common.GetDefaultConfig()
+	mockConfig.SetDataDir("./tmp/")
 
 	logger := zap.NewNop()
 
@@ -39,8 +37,8 @@ func setupAppendEntriesTest(t *testing.T) (*peerClient, *rpc.MockRaftServiceClie
 	t.Cleanup(func() { ctrl.Finish() })
 
 	mockClient := rpc.NewMockRaftServiceClient(ctrl)
-	mockConfig := common.NewMockConfigManager(ctrl)
-	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
+	mockConfig := common.GetDefaultConfig()
+	mockConfig.SetDataDir("./tmp/")
 
 	client := &peerClient{
 		nodeId:    "test-node",
@@ -110,9 +108,8 @@ func TestRobustClientImpl_RequestVoteWithRetry_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockClient := rpc.NewMockRaftServiceClient(ctrl)
-	mockConfig := common.NewMockConfigManager(ctrl)
-	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
-	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
+	mockConfig := common.GetDefaultConfig()
+	mockConfig.SetDataDir("./tmp/")
 
 	client := &peerClient{
 		nodeId:    "test-node",
@@ -150,9 +147,8 @@ func TestRobustClientImpl_RequestVoteWithRetry_ErrorWithRetry(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockClient := rpc.NewMockRaftServiceClient(ctrl)
-	mockConfig := common.NewMockConfigManager(ctrl)
-	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
-	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
+	mockConfig := common.GetDefaultConfig()
+	mockConfig.SetDataDir("./tmp/")
 
 	client := &peerClient{
 		nodeId:    "test-node",
@@ -195,9 +191,8 @@ func TestRobustClientImpl_RequestVoteWithRetry_ContextCancellation(t *testing.T)
 	defer ctrl.Finish()
 
 	mockClient := rpc.NewMockRaftServiceClient(ctrl)
-	mockConfig := common.NewMockConfigManager(ctrl)
-	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
-	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
+	mockConfig := common.GetDefaultConfig()
+	mockConfig.SetDataDir("./tmp/")
 
 	client := &peerClient{
 		nodeId:    "test-node",
@@ -232,9 +227,8 @@ func TestRobustClientImpl_RequestVoteWithRetry_ContextCancellationAfterRetries(t
 	defer ctrl.Finish()
 
 	mockClient := rpc.NewMockRaftServiceClient(ctrl)
-	mockConfig := common.NewMockConfigManager(ctrl)
-	mockConfig.EXPECT().GetRPCRequestTimeout().Return(time.Second).AnyTimes()
-	mockConfig.EXPECT().GetRPCDeadlineMargin().Return(time.Millisecond * 100).AnyTimes()
+	mockConfig := common.GetDefaultConfig()
+	mockConfig.SetDataDir("./tmp/")
 
 	client := &peerClient{
 		nodeId:    "test-node",
@@ -281,7 +275,8 @@ func TestRobustClientImpl_Close(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockConfig := common.NewMockConfigManager(ctrl)
+	mockConfig := common.GetDefaultConfig()
+	mockConfig.SetDataDir("./tmp/")
 	client := &peerClient{
 		nodeId:   "test-node",
 		nodeAddr: "localhost:8080",
