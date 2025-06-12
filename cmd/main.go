@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,11 +17,6 @@ import (
 func main() {
 
 	// basics
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		panic(err)
-	}
-	defer logger.Sync()
 
 	// config
 	path := "./config/base.yaml"
@@ -33,12 +29,18 @@ func main() {
 	} else if *pathInArgs != "" {
 		path = *pathInArgs
 	}
-	logger.Info("Loading Config from Path", zap.String("path", path))
+	fmt.Println("loading config from path", path)
 
 	cfg, err := common.LoadConfig(path)
 	if err != nil {
 		panic(err)
 	}
+
+	logger, err := createLogger(cfg)
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
 
 	// server start
 	server, err := mkraft.NewServer(cfg, logger)
@@ -59,4 +61,12 @@ func main() {
 	logger.Info("waiting for server to stop")
 	time.Sleep(5 * time.Second)
 	logger.Warn("Main exiting")
+}
+
+func createLogger(cfg *common.Config) (*zap.Logger, error) {
+	if cfg.Monitoring.LogLevel == "dev" {
+		return zap.NewDevelopment()
+	} else {
+		return zap.NewProduction()
+	}
 }
