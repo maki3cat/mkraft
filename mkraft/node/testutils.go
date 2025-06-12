@@ -24,6 +24,7 @@ func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 
 	mockRaftLog := log.NewMockRaftLogs(ctrl)
 	mockRaftLog.EXPECT().GetLastLogIdx().Return(uint64(0)).AnyTimes()
+	mockRaftLog.EXPECT().CheckPreLog(gomock.Any(), gomock.Any()).Return(true).AnyTimes()
 
 	config := common.GetDefaultConfig()
 	config.SetDataDir("./tmp/")
