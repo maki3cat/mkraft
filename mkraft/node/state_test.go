@@ -8,8 +8,8 @@ import (
 )
 
 func TestLoadCurrentTermAndVotedFor(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	// Test loading when file doesn't exist
 	err := node.loadCurrentTermAndVotedFor()
@@ -28,8 +28,8 @@ func TestLoadCurrentTermAndVotedFor(t *testing.T) {
 }
 
 func TestStoreCurrentTermAndVotedFor(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	// Test storing new values
 	err := node.storeCurrentTermAndVotedFor(3, "node2", false)
@@ -48,8 +48,8 @@ func TestStoreCurrentTermAndVotedFor(t *testing.T) {
 }
 
 func TestUpdateCurrentTermAndVotedForAsCandidate(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	node.CurrentTerm = 1
 	err := node.updateCurrentTermAndVotedForAsCandidate(false)
@@ -66,8 +66,8 @@ func TestUpdateCurrentTermAndVotedForAsCandidate(t *testing.T) {
 }
 
 func TestGetCurrentTerm(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	// Test initial term
 	term := node.getCurrentTerm()

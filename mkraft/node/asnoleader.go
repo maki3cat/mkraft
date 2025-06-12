@@ -150,6 +150,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 				case response, ok := <-consensusChan: // some response from last election
 
 					if !ok || response == nil {
+						// implementaiton gap: add timeout here on error of a node
 						n.logger.Error("error in consensusChan, try to re-elect after another election timeout")
 						time.Sleep(n.cfg.GetElectionTimeout())
 						continue

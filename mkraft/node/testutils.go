@@ -12,9 +12,15 @@ import (
 	"go.uber.org/zap"
 )
 
-func newMockNode(t *testing.T) *nodeImpl {
+func newMockNodeWithConsensus(t *testing.T, membership peers.Membership) (*nodeImpl, *gomock.Controller) {
+	allMockedNode, ctrl := newMockNode(t)
+	allMockedNode.membership = membership
+	allMockedNode.consensus = NewConsensus(allMockedNode, zap.NewNop(), membership)
+	return allMockedNode, ctrl
+}
+
+func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
 
 	mockRaftLog := log.NewMockRaftLogs(ctrl)
 	mockRaftLog.EXPECT().GetLastLogIdx().Return(uint64(0)).AnyTimes()
@@ -32,9 +38,10 @@ func newMockNode(t *testing.T) *nodeImpl {
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog, consensus)
 	node := n.(*nodeImpl)
-	return node
+	return node, ctrl
 }
 
-func cleanUpTmpDir() {
+func cleanUpTmpDir(ctrl *gomock.Controller) {
+	ctrl.Finish()
 	os.RemoveAll("./tmp/")
 }

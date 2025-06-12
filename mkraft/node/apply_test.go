@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/maki3cat/mkraft/mkraft/log"
-	"github.com/maki3cat/mkraft/mkraft/peers"
 	"github.com/maki3cat/mkraft/mkraft/plugs"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/stretchr/testify/assert"
@@ -17,10 +16,8 @@ import (
 // ---------------------------------------basic method to apply logs: applyAllLaggedCommitedLogs---------------------------------------
 
 func TestApplyAllLaggedCommitedLogs(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockMembership := peers.NewMockMembership(ctrl)
-	node := getMockNode(mockMembership)
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
@@ -44,8 +41,8 @@ func TestApplyAllLaggedCommitedLogs_CommitIdxEqualsLastApplied(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	node.stateRWLock.Lock()
 	node.commitIndex = 5
@@ -61,8 +58,8 @@ func TestApplyAllLaggedCommitedLogs_CommitIdxEqualsLastApplied(t *testing.T) {
 }
 
 func TestApplyAllLaggedCommitedLogs_CommitIdxGreaterThanLastApplied(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
