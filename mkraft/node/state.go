@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -14,20 +15,34 @@ func (n *nodeImpl) getStateFileName() string {
 	return "state.rft"
 }
 
+func (n *nodeImpl) getStateFilePath() string {
+	dir := n.cfg.GetDataDir()
+	return filepath.Join(dir, "state.rft")
+}
+
+func (n *nodeImpl) getTmpStateFilePath() string {
+	dir := n.cfg.GetDataDir()
+	formatted := time.Now().Format("20060102150405")
+	numericTimestamp := formatted[:len(formatted)-4] + formatted[len(formatted)-3:]
+	fileName := fmt.Sprintf("%s_%s", n.getStateFileName(), numericTimestamp)
+	return filepath.Join(dir, fileName)
+}
+
 // load from file system, shall be called at the beginning of the node
 func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
+	path := n.getStateFilePath()
 
 	// if not exists, initialize to default values
-	if _, err := os.Stat(n.getStateFileName()); os.IsNotExist(err) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		n.logger.Info("raft state file does not exist, initializing to default values")
 		n.CurrentTerm = 0
 		n.VotedFor = ""
 		return nil
 	}
 
-	file, err := os.Open(n.getStateFileName())
+	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			n.logger.Info("raft state file does not exist, initializing to default values")
@@ -52,13 +67,6 @@ func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 
 	n.CurrentTerm = term
 	n.VotedFor = voteFor
-
-	n.logger.Debug("loadCurrentTermAndVotedFor",
-		zap.String("fileName", n.getStateFileName()),
-		zap.Int("bytesRead", cnt),
-		zap.Uint32("term", n.CurrentTerm),
-		zap.String("voteFor", n.VotedFor),
-	)
 	return nil
 }
 
@@ -68,8 +76,8 @@ func (n *nodeImpl) storeCurrentTermAndVotedFor(term uint32, voteFor string, reEn
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()
 	}
-	shouldReturn, err := n.unsafeUpdateNodeTermAndVoteFor(term, voteFor)
-	if shouldReturn {
+	err := n.unsafePersistTermAndVoteFor(term, voteFor)
+	if err != nil {
 		return err
 	}
 	n.CurrentTerm = term
@@ -83,51 +91,44 @@ func (n *nodeImpl) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error
 	}
 	term := n.CurrentTerm + 1
 	voteFor := n.NodeId
-	shouldReturn, err := n.unsafeUpdateNodeTermAndVoteFor(term, voteFor)
-	if shouldReturn {
+	err := n.unsafePersistTermAndVoteFor(term, voteFor)
+	if err != nil {
 		return err
 	}
 	n.CurrentTerm = term
 	return nil
 }
 
-func (n *nodeImpl) unsafeUpdateNodeTermAndVoteFor(term uint32, voteFor string) (bool, error) {
-	formatted := time.Now().Format("20060102150405.000")
-	numericTimestamp := formatted[:len(formatted)-4] + formatted[len(formatted)-3:]
-	fileName := fmt.Sprintf("%s_%s.tmp", n.getStateFileName(), numericTimestamp)
-
-	file, err := os.Create(fileName)
+func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) error {
+	path := n.getTmpStateFilePath()
+	file, err := os.Create(path)
 	if err != nil {
-		return true, err
+		return err
 	}
 
-	cnt, err := file.WriteString(fmt.Sprintf("%d,%s", term, voteFor))
-	n.logger.Debug("storeCurrentTermAndVotedFor",
-		zap.String("fileName", fileName),
-		zap.Int("bytesWritten", cnt),
-		zap.Uint32("term", term),
-		zap.String("voteFor", voteFor),
-		zap.Error(err),
-	)
+	_, err = file.WriteString(fmt.Sprintf("%d,%s", term, voteFor))
+	if err != nil {
+		return err
+	}
 
 	err = file.Sync()
 	if err != nil {
-		n.logger.Error("error syncing file", zap.String("fileName", fileName), zap.Error(err))
-		return true, err
+		n.logger.Error("error syncing file", zap.String("fileName", path), zap.Error(err))
+		return err
 	}
 	err = file.Close()
 	if err != nil {
-		n.logger.Error("error closing file", zap.String("fileName", fileName), zap.Error(err))
-		return true, err
+		n.logger.Error("error closing file", zap.String("fileName", path), zap.Error(err))
+		return err
 	}
 
-	err = os.Rename(fileName, n.getStateFileName())
+	err = os.Rename(path, n.getStateFilePath())
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	n.VotedFor = voteFor
-	return false, nil
+	return nil
 }
 
 // normal read

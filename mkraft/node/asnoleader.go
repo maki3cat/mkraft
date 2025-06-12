@@ -16,8 +16,14 @@ PAPER:
 
 Follower are passive and they don't initiate any requests,
 and only respond to requests from candidates and leaders.
-
 If times out, the follower will convert to candidate state.
+
+implementation gap:
+the control flow of the FOLLOWER is :
+- (RECEIVE: main thread) the main flow to receive requests sent by the peers(leader/candidate), heartbeating is related with this flow;
+- (SENDER: not applicable) follower doesn't send any requests;
+- (APPLY: worker thread) the worker to apply logs to the state machine, so the application doesn't block the receiver;
+- (CLEANER: worker thread) the cleaner to reject client commands, so this dirty messages don't interfere with the main flow;
 */
 func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 
@@ -78,7 +84,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 						n.logger.Warn("append entry is timeout")
 						continue
 					}
-					resp := n.noleaderHandleAppendEntries(ctx, appendEntryInternal.Req)
+					resp := n.receiveAppendEntriesAsNoLeader(ctx, appendEntryInternal.Req)
 					wrappedResp := utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 						Resp: resp,
 						Err:  nil,
@@ -94,10 +100,13 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 PAPER (quote):
 Shared Rule: if any RPC request or response is received from a server with a higher term,
 convert to follower
-How the Shared Rule works for Candidates:
-(1) handle the response of RequestVoteRPC initiated by itself
-(2) handle request of AppendEntriesRPC initiated by another server
-(3) handle reuqest of RequestVoteRPC initiated by another server
+
+implementation gap:
+the control flow of the FOLLOWER is :
+- (SENDER: main thread) do election in an async way;
+- (RECEIVER: main thread) since votes are collected asynchronously, it will be simpler and easier if we combine sender/receiver;
+- (APPLY: worker thread) the worker to apply logs to the state machine, so the application doesn't block the receiver;
+- (CLEANER: worker thread) the cleaner to reject client commands, so this dirty messages don't interfere with the main flow;
 */
 func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 
@@ -124,7 +133,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 	}()
 
 	// there is no tikcer in this cancdiate state, and we use this election return as a de facto ticker
-	consensusChan := n.asyncReElect(ctx)
+	consensusChan := n.asyncSendElection(ctx)
 
 	for {
 		currentTerm := n.getCurrentTerm()
@@ -168,7 +177,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 							n.logger.Warn(
 								"not enough votes, re-elect again",
 								zap.Int("term", int(currentTerm)), zap.String("nId", n.NodeId))
-							consensusChan = n.asyncReElect(ctx)
+							consensusChan = n.asyncSendElection(ctx)
 						}
 					}
 				case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
@@ -194,7 +203,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 						continue
 					}
 					req.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
-						Resp: n.noleaderHandleAppendEntries(ctx, req.Req),
+						Resp: n.receiveAppendEntriesAsNoLeader(ctx, req.Req),
 						Err:  nil,
 					}
 					// maki: here is a bit tricky compared with voteRequest
@@ -245,7 +254,7 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 // maki: lastLogIndex, commitIndex, lastApplied can be totally different from each other
 // shall be called when the node is not a leader
 // the raft server is generally single-threaded, so there is no other thread to change the commitIdx
-func (n *nodeImpl) noleaderHandleAppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) *rpc.AppendEntriesResponse {
+func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.AppendEntriesRequest) *rpc.AppendEntriesResponse {
 
 	var response rpc.AppendEntriesResponse
 	reqTerm := uint32(req.Term)
@@ -311,9 +320,9 @@ func (n *nodeImpl) noleaderHandleAppendEntries(ctx context.Context, req *rpc.App
 // if AppendEntries RPC received from new leader: convert to follower
 // if election timeout elapses: start new election
 
-// the implementation:
+// implementation gap:
 // triggers peerCnt + 1 goroutines for fan-out rpc and fan-in the responses
-func (n *nodeImpl) asyncReElect(ctx context.Context) chan *MajorityRequestVoteResp {
+func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	consensusChan := make(chan *MajorityRequestVoteResp, 1)
@@ -337,7 +346,7 @@ func (n *nodeImpl) asyncReElect(ctx context.Context) chan *MajorityRequestVoteRe
 			Term:        n.getCurrentTerm(),
 			CandidateId: n.NodeId,
 		}
-		resp, err := n.ConsensusRequestVote(electionCtx, req)
+		resp, err := n.consensus.ConsensusRequestVote(electionCtx, req)
 		if err != nil {
 			n.logger.Error("error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
 			close(consensusChan)

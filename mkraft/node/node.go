@@ -46,6 +46,9 @@ type Node interface {
 	ClientCommand(req *utils.ClientCommandInternalReq)
 	Start(ctx context.Context)
 	GracefulStop()
+
+	IncrPeerIdx(nodeID string, idx uint64)
+	DecrPeerIdx(nodeID string)
 }
 
 // not only new a class but also catch up statemachine, so it may cost time
@@ -56,9 +59,11 @@ func NewNode(
 	membership peers.Membership,
 	statemachine plugs.StateMachine,
 	raftLog log.RaftLogs,
+	consensus Consensus,
 ) Node {
 	bufferSize := cfg.GetRaftNodeRequestBufferSize()
 	node := &nodeImpl{
+		consensus:    consensus,
 		membership:   membership,
 		raftLog:      raftLog,
 		statemachine: statemachine,
@@ -108,6 +113,7 @@ func NewNode(
 // the Raft Server Node
 type nodeImpl struct {
 	membership peers.Membership // managed by the outside overarching server
+	consensus  Consensus
 
 	raftLog      log.RaftLogs // required, persistent
 	cfg          *common.Config

@@ -12,37 +12,33 @@ import (
 	"go.uber.org/zap"
 )
 
-// algorithm about consensus
-func calculateIfMajorityMet(total, peerVoteAccumulated int) bool {
-	return (peerVoteAccumulated + 1) >= total/2+1
+type Consensus interface {
+	// synchronous call to until the a consensus is reached or is failed
+	// it contains forever retry mechanism, so
+	// !!! the ctx shall be Done within the election timeout
+	// !!! This is shortcut method, it returns when the consensus is reached or failed without waiting for all the responses
+	ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error)
+	// goroutine management:this method expands goroutines to the number of peers,
+	// but since this system handles appendEnrines once a time in a serial way
+	// I don't think we need to worry about the explosion of goroutines
+	ConsensusAppendEntries(ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error)
 }
 
-func calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed int) bool {
-	majority := total/2 + 1
-	majorityNeeded := majority - 1
-	needed := majorityNeeded - peerVoteAccumulated
-	possibleRespondant := peersCount - voteFailed - peerVoteAccumulated
-	return possibleRespondant < needed
+type consensus struct {
+	node       Node
+	logger     *zap.Logger
+	membership peers.Membership
 }
 
-// peers communication to get the consensus
-type AppendEntriesConsensusResp struct {
-	Term    uint32
-	Success bool
+func NewConsensus(node Node, logger *zap.Logger, membership peers.Membership) Consensus {
+	return &consensus{
+		node:       node,
+		logger:     logger,
+		membership: membership,
+	}
 }
 
-type MajorityRequestVoteResp struct {
-	Term        uint32
-	VoteGranted bool
-	Err         error
-}
-
-// synchronous call to until the a consensus is reached or is failed
-// it contains forever retry mechanism, so
-// !!! the ctx shall be Done within the election timeout
-// !!! This is shortcut method, it returns when the consensus is reached or failed without waiting for all the responses
-func (c *nodeImpl) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
-
+func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
 	requestID := common.GetRequestID(ctx)
 	total := c.membership.GetTotalMemberCount()
 	peerClients, err := c.membership.GetAllPeerClients()
@@ -143,17 +139,12 @@ func (c *nodeImpl) ConsensusRequestVote(ctx context.Context, request *rpc.Reques
 	return nil, common.ErrInvariantsBroken
 }
 
-// goroutine management:this method expands goroutines to the number of peers,
-// but since this system handles appendEnrines once a time in a serial way
-// I don't think we need to worry about the explosion of goroutines
-func (n *nodeImpl) ConsensusAppendEntries(
-	ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error) {
-
+func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error) {
 	requestID := common.GetRequestID(ctx)
-	total := n.membership.GetTotalMemberCount()
-	peerClients, err := n.membership.GetAllPeerClientsV2()
+	total := c.membership.GetTotalMemberCount()
+	peerClients, err := c.membership.GetAllPeerClientsV2()
 	if err != nil {
-		n.logger.Error("error in getting all peer clients",
+		c.logger.Error("error in getting all peer clients",
 			zap.Error(err),
 			zap.String("requestID", requestID))
 		return nil, err
@@ -161,7 +152,7 @@ func (n *nodeImpl) ConsensusAppendEntries(
 
 	// check if registered peers are enough to get the consensus
 	if !calculateIfMajorityMet(total, len(peerClients)) {
-		n.logger.Error("not enough peer clients registered for consensus", zap.String("requestID", requestID))
+		c.logger.Error("not enough peer clients registered for consensus", zap.String("requestID", requestID))
 		return nil, common.ErrNotEnoughPeersForConsensus
 	}
 
@@ -189,7 +180,7 @@ func (n *nodeImpl) ConsensusAppendEntries(
 			resp, err := client.AppendEntriesWithRetry(rpcCtx, req)
 			// FAN-IN
 			if err != nil {
-				n.logger.Error("error in sending append entries to one node",
+				c.logger.Error("error in sending append entries to one node",
 					zap.Error(err),
 					zap.String("requestID", requestID))
 				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
@@ -199,9 +190,9 @@ func (n *nodeImpl) ConsensusAppendEntries(
 			} else {
 				if resp.Success {
 					// update the peers' index
-					n.incrPeerIdxAfterLogRepli(nodeID, uint64(len(req.Entries)))
+					c.node.IncrPeerIdx(nodeID, uint64(len(req.Entries)))
 				} else {
-					n.decrPeerIdxAfterLogRepli(nodeID)
+					c.node.DecrPeerIdx(nodeID)
 				}
 				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 					Resp: resp,
@@ -219,7 +210,7 @@ func (n *nodeImpl) ConsensusAppendEntries(
 		select {
 		case res := <-allRespChan:
 			if err := res.Err; err != nil {
-				n.logger.Warn("error returned from appendEntries",
+				c.logger.Warn("error returned from appendEntries",
 					zap.Error(err),
 					zap.String("requestID", requestID))
 				failAccumulated++
@@ -227,7 +218,7 @@ func (n *nodeImpl) ConsensusAppendEntries(
 			} else {
 				resp := res.Resp
 				if resp.Term > currentTerm {
-					n.logger.Info("peer's term is greater than current term",
+					c.logger.Info("peer's term is greater than current term",
 						zap.String("requestID", requestID))
 					return &AppendEntriesConsensusResp{
 						Term:    resp.Term,
@@ -246,7 +237,7 @@ func (n *nodeImpl) ConsensusAppendEntries(
 					} else {
 						failAccumulated++
 						if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, failAccumulated) {
-							n.logger.Warn("another node with same term becomes the leader",
+							c.logger.Warn("another node with same term becomes the leader",
 								zap.String("requestID", requestID))
 							return &AppendEntriesConsensusResp{
 								Term:    resp.Term,
@@ -256,19 +247,44 @@ func (n *nodeImpl) ConsensusAppendEntries(
 					}
 				}
 				if resp.Term < currentTerm {
-					n.logger.Error(
+					c.logger.Error(
 						"invairant failed, smaller term is not overwritten by larger term",
 						zap.String("response", resp.String()),
 						zap.String("requestID", requestID))
-					n.logger.Error("this should not happen, the consensus algorithm is not implmented correctly")
+					c.logger.Error("this should not happen, the consensus algorithm is not implmented correctly")
 					return nil, common.ErrInvariantsBroken
 				}
 			}
 		case <-ctx.Done():
-			n.logger.Info("context canceled",
+			c.logger.Info("context canceled",
 				zap.String("requestID", requestID))
 			return nil, common.ErrContextDone
 		}
 	}
 	return nil, errors.New("this should not happen, the consensus algorithm is not implmented correctly")
+}
+
+// algorithm about consensus
+func calculateIfMajorityMet(total, peerVoteAccumulated int) bool {
+	return (peerVoteAccumulated + 1) >= total/2+1
+}
+
+func calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed int) bool {
+	majority := total/2 + 1
+	majorityNeeded := majority - 1
+	needed := majorityNeeded - peerVoteAccumulated
+	possibleRespondant := peersCount - voteFailed - peerVoteAccumulated
+	return possibleRespondant < needed
+}
+
+// peers communication to get the consensus
+type AppendEntriesConsensusResp struct {
+	Term    uint32
+	Success bool
+}
+
+type MajorityRequestVoteResp struct {
+	Term        uint32
+	VoteGranted bool
+	Err         error
 }

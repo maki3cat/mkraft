@@ -21,11 +21,16 @@ func newMockNode(t *testing.T) *nodeImpl {
 
 	config := common.GetDefaultConfig()
 	config.SetDataDir("./tmp/")
+	err := os.MkdirAll(config.GetDataDir(), 0755)
+	if err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
 
 	membership := peers.NewMockMembership(ctrl)
 	statemachine := plugs.NewMockStateMachine(ctrl)
 
-	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	consensus := NewMockConsensus(ctrl)
+	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog, consensus)
 	node := n.(*nodeImpl)
 	return node
 }

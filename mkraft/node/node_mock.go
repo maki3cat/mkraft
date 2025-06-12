@@ -65,6 +65,18 @@ func (mr *MockNodeMockRecorder) ClientCommand(req any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClientCommand", reflect.TypeOf((*MockNode)(nil).ClientCommand), req)
 }
 
+// DecrPeerIdx mocks base method.
+func (m *MockNode) DecrPeerIdx(nodeID string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DecrPeerIdx", nodeID)
+}
+
+// DecrPeerIdx indicates an expected call of DecrPeerIdx.
+func (mr *MockNodeMockRecorder) DecrPeerIdx(nodeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DecrPeerIdx", reflect.TypeOf((*MockNode)(nil).DecrPeerIdx), nodeID)
+}
+
 // GracefulStop mocks base method.
 func (m *MockNode) GracefulStop() {
 	m.ctrl.T.Helper()
@@ -75,6 +87,18 @@ func (m *MockNode) GracefulStop() {
 func (mr *MockNodeMockRecorder) GracefulStop() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GracefulStop", reflect.TypeOf((*MockNode)(nil).GracefulStop))
+}
+
+// IncrPeerIdx mocks base method.
+func (m *MockNode) IncrPeerIdx(nodeID string, idx uint64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "IncrPeerIdx", nodeID, idx)
+}
+
+// IncrPeerIdx indicates an expected call of IncrPeerIdx.
+func (mr *MockNodeMockRecorder) IncrPeerIdx(nodeID, idx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrPeerIdx", reflect.TypeOf((*MockNode)(nil).IncrPeerIdx), nodeID, idx)
 }
 
 // Start mocks base method.

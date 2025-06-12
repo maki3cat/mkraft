@@ -1,69 +1,80 @@
 package node
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetCurrentState(t *testing.T) {
+func TestLoadCurrentTermAndVotedFor(t *testing.T) {
 	node := newMockNode(t)
 	defer cleanUpTmpDir()
-	state := node.GetNodeState()
-	assert.Equal(t, StateFollower, state)
+
+	// Test loading when file doesn't exist
+	err := node.loadCurrentTermAndVotedFor()
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(0), node.CurrentTerm)
+	assert.Equal(t, "", node.VotedFor)
+
+	// Test loading existing file
+	err = node.storeCurrentTermAndVotedFor(5, "node1", false)
+	assert.NoError(t, err)
+
+	err = node.loadCurrentTermAndVotedFor()
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(5), node.CurrentTerm)
+	assert.Equal(t, "node1", node.VotedFor)
 }
 
-func TestSetCurrentState(t *testing.T) {
-
+func TestStoreCurrentTermAndVotedFor(t *testing.T) {
 	node := newMockNode(t)
 	defer cleanUpTmpDir()
 
-	// Test setting to Leader
-	node.SetNodeState(StateLeader)
-	assert.Equal(t, StateLeader, node.GetNodeState())
+	// Test storing new values
+	err := node.storeCurrentTermAndVotedFor(3, "node2", false)
+	assert.NoError(t, err)
 
-	// Test setting to Candidate
-	node.SetNodeState(StateCandidate)
-	assert.Equal(t, StateCandidate, node.GetNodeState())
+	// Verify stored values
+	term := node.getCurrentTerm()
+	assert.Equal(t, uint32(3), term)
 
-	// Test setting to Follower
-	node.SetNodeState(StateFollower)
-	assert.Equal(t, StateFollower, node.GetNodeState())
+	// Test updating values
+	err = node.storeCurrentTermAndVotedFor(4, "node3", false)
+	assert.NoError(t, err)
+
+	term = node.getCurrentTerm()
+	assert.Equal(t, uint32(4), term)
 }
 
-func TestIsLeader(t *testing.T) {
-
+func TestUpdateCurrentTermAndVotedForAsCandidate(t *testing.T) {
 	node := newMockNode(t)
 	defer cleanUpTmpDir()
-	// Test when node is leader
-	node.SetNodeState(StateLeader)
-	assert.True(t, node.GetNodeState() == StateLeader)
 
-	// Test when node is not leader
-	node.SetNodeState(StateFollower)
-	assert.False(t, node.GetNodeState() == StateLeader)
+	node.CurrentTerm = 1
+	err := node.updateCurrentTermAndVotedForAsCandidate(false)
+	assert.NoError(t, err)
+
+	// Term should increment
+	assert.Equal(t, uint32(2), node.getCurrentTerm())
+	assert.Equal(t, node.NodeId, node.VotedFor)
+
+	// Verify persisted to disk
+	data, err := os.ReadFile(node.getStateFilePath())
+	assert.NoError(t, err)
+	assert.Contains(t, string(data), "2,"+node.NodeId)
 }
 
-func TestIsFollower(t *testing.T) {
+func TestGetCurrentTerm(t *testing.T) {
 	node := newMockNode(t)
 	defer cleanUpTmpDir()
-	// Test when node is follower
-	node.SetNodeState(StateFollower)
-	assert.True(t, node.GetNodeState() == StateFollower)
 
-	// Test when node is not follower
-	node.SetNodeState(StateLeader)
-	assert.False(t, node.GetNodeState() == StateFollower)
-}
+	// Test initial term
+	term := node.getCurrentTerm()
+	assert.Equal(t, uint32(0), term)
 
-func TestIsCandidate(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
-	// Test when node is candidate
-	node.SetNodeState(StateCandidate)
-	assert.True(t, node.GetNodeState() == StateCandidate)
-
-	// Test when node is not candidate
-	node.SetNodeState(StateLeader)
-	assert.False(t, node.GetNodeState() == StateCandidate)
+	// Test after updating term
+	node.CurrentTerm = 5
+	term = node.getCurrentTerm()
+	assert.Equal(t, uint32(5), term)
 }

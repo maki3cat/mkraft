@@ -16,8 +16,6 @@ import (
 
 func main() {
 
-	// basics
-
 	// config
 	path := "./config/base.yaml"
 	pathInArgs := flag.String("c", "", "the path of the config file")

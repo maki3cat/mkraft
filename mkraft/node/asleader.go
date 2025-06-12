@@ -183,7 +183,7 @@ func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 
 	ctxTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetRPCRequestTimeout())
 	defer cancel()
-	resp, err := n.ConsensusAppendEntries(ctxTimeout, reqs, n.CurrentTerm)
+	resp, err := n.consensus.ConsensusAppendEntries(ctxTimeout, reqs, n.CurrentTerm)
 	if err != nil {
 		n.logger.Error("error in sending append entries to one node", zap.Error(err))
 		return JobResult{ShallDegrade: false}, err
@@ -264,7 +264,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 				Entries:      append(catchupCommands, newCommands...),
 			}
 		}
-		resp, err := n.ConsensusAppendEntries(ctx, reqs, n.getCurrentTerm())
+		resp, err := n.consensus.ConsensusAppendEntries(ctx, reqs, n.getCurrentTerm())
 		respChan <- resp
 		errorChanTask2 <- err
 	}(ctx)

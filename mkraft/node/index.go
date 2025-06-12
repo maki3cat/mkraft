@@ -166,3 +166,11 @@ func (n *nodeImpl) getPeersNextIndex(nodeID string) uint64 {
 func (n *nodeImpl) getInitDefaultValuesForPeer() (uint64, uint64) {
 	return n.raftLog.GetLastLogIdx() + 1, 0
 }
+
+func (n *nodeImpl) IncrPeerIdx(nodeID string, idx uint64) {
+	n.incrPeerIdxAfterLogRepli(nodeID, idx)
+}
+
+func (n *nodeImpl) DecrPeerIdx(nodeID string) {
+	n.decrPeerIdxAfterLogRepli(nodeID)
+}

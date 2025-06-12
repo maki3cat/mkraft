@@ -25,6 +25,8 @@ func getMockNode(mockMembership *peers.MockMembership) *nodeImpl {
 		matchIndex:  map[string]uint64{},
 		cfg:         common.GetDefaultConfig(),
 	}
+	consensus := NewConsensus(node, zap.NewNop(), mockMembership)
+	node.consensus = consensus
 	return node
 }
 
@@ -208,7 +210,7 @@ func TestNode_ConsensusRequestVote_HappyPath(t *testing.T) {
 				expectCall2.MaxTimes(tt.maxTimes)
 			}
 
-			resp, err := n.ConsensusRequestVote(ctx, req)
+			resp, err := n.consensus.ConsensusRequestVote(ctx, req)
 			if err != nil {
 				t.Errorf("ConsensusRequestVote() error = %v", err)
 				return
@@ -281,7 +283,7 @@ func TestNode_ConsensusRequestVote_MajorityFail(t *testing.T) {
 				expectCall2.MaxTimes(tt.maxTimes)
 			}
 
-			_, err := node.ConsensusRequestVote(ctx, req)
+			_, err := node.consensus.ConsensusRequestVote(ctx, req)
 			if tt.sleep {
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -347,7 +349,7 @@ func TestNode_ConsensusRequestVote_HigherTerm(t *testing.T) {
 				expectCall2.MaxTimes(tt.maxTimes)
 			}
 
-			resp, err := node.ConsensusRequestVote(ctx, req)
+			resp, err := node.consensus.ConsensusRequestVote(ctx, req)
 			if tt.sleep {
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -419,7 +421,7 @@ func TestNode_ConsensusRequestVote_ContextCancelled(t *testing.T) {
 				expectCall2.MaxTimes(tt.maxTimes)
 			}
 
-			_, err := node.ConsensusRequestVote(ctx, req)
+			_, err := node.consensus.ConsensusRequestVote(ctx, req)
 			if tt.sleep {
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -469,7 +471,7 @@ func TestNode_ConsensusRequestVote_MembershipError(t *testing.T) {
 			mockMembership.EXPECT().GetTotalMemberCount().Return(3)
 			mockMembership.EXPECT().GetAllPeerClients().Return(nil, errors.New("membership error"))
 
-			_, err := n.ConsensusRequestVote(ctx, req)
+			_, err := n.consensus.ConsensusRequestVote(ctx, req)
 			if tt.sleep {
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -542,7 +544,7 @@ func TestConsensusRequestVoteContext(t *testing.T) {
 
 			tt.setupMocks(mockMembership, mockClient)
 
-			_, err := node.ConsensusRequestVote(ctx, req)
+			_, err := node.consensus.ConsensusRequestVote(ctx, req)
 			if err != tt.wantErr {
 				t.Errorf("ConsensusRequestVote() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -623,7 +625,7 @@ func TestNode_ConsensusAppendEntries_HappyPath(t *testing.T) {
 				expectCall2.MaxTimes(tt.maxTimes)
 			}
 
-			resp, err := node.ConsensusAppendEntries(ctx, peerReqs, 1)
+			resp, err := node.consensus.ConsensusAppendEntries(ctx, peerReqs, 1)
 			if err != nil {
 				t.Errorf("ConsensusAppendEntries() error = %v", err)
 				return
@@ -639,6 +641,7 @@ func TestNode_ConsensusAppendEntries_HappyPath(t *testing.T) {
 		})
 	}
 }
+
 func TestNode_ConsensusAppendEntries_HigherTerm(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -710,7 +713,7 @@ func TestNode_ConsensusAppendEntries_HigherTerm(t *testing.T) {
 				expectCall2.MaxTimes(tt.maxTimes)
 			}
 
-			resp, err := node.ConsensusAppendEntries(ctx, peerReqs, 1)
+			resp, err := node.consensus.ConsensusAppendEntries(ctx, peerReqs, 1)
 			if tt.sleep {
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -769,7 +772,7 @@ func TestNode_ConsensusAppendEntries_MembershipError(t *testing.T) {
 			mockMembership.EXPECT().GetTotalMemberCount().Return(3)
 			mockMembership.EXPECT().GetAllPeerClientsV2().Return(nil, errors.New("membership error"))
 
-			_, err := node.ConsensusAppendEntries(ctx, peerReqs, 1)
+			_, err := node.consensus.ConsensusAppendEntries(ctx, peerReqs, 1)
 			if tt.sleep {
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -854,7 +857,7 @@ func TestNode_ConsensusAppendEntries_ContextCancelled(t *testing.T) {
 				expectCall2.MaxTimes(tt.maxTimes)
 			}
 
-			_, err := node.ConsensusAppendEntries(ctx, peerReqs, 1)
+			_, err := node.consensus.ConsensusAppendEntries(ctx, peerReqs, 1)
 			if tt.sleep {
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -901,7 +904,7 @@ func TestConsensusAppendEntries_SmallerTermResponse(t *testing.T) {
 			Success: true,
 		}, nil)
 
-	resp, err := node.ConsensusAppendEntries(ctx, peerReqs, 2)
+	resp, err := node.consensus.ConsensusAppendEntries(ctx, peerReqs, 2)
 
 	if err == nil || !errors.Is(err, common.ErrInvariantsBroken) {
 		t.Errorf("ConsensusAppendEntries() error = %v, want ErrInvariantsBroken", err)
