@@ -47,9 +47,8 @@ grpc:
 	assert.NoError(t, err)
 	tmpfile.Close()
 
-	cfgIface, err := LoadConfig(tmpfile.Name())
+	cfg, err := LoadConfig(tmpfile.Name())
 	assert.NoError(t, err)
-	cfg := cfgIface.(*Config)
 
 	assert.Equal(t, 123, cfg.BasicConfig.RaftNodeRequestBufferSize)
 	assert.Equal(t, 456*time.Millisecond, cfg.GetRPCRequestTimeout())
@@ -85,9 +84,8 @@ grpc:
 	assert.NoError(t, err)
 	tmpfile.Close()
 
-	cfgIface, err := LoadConfig(tmpfile.Name())
+	cfg, err := LoadConfig(tmpfile.Name())
 	assert.NoError(t, err)
-	cfg := cfgIface.(*Config)
 
 	assert.Equal(t, RAFT_NODE_REQUEST_BUFFER_SIZE, cfg.BasicConfig.RaftNodeRequestBufferSize)
 	assert.Equal(t, RPC_REUQEST_TIMEOUT_IN_MS*time.Millisecond, cfg.GetRPCRequestTimeout())

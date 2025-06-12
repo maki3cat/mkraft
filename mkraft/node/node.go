@@ -51,7 +51,7 @@ type Node interface {
 // not only new a class but also catch up statemachine, so it may cost time
 func NewNode(
 	nodeId string,
-	cfg common.ConfigManager,
+	cfg *common.Config,
 	logger *zap.Logger,
 	membership peers.Membership,
 	statemachine plugs.StateMachine,
@@ -110,7 +110,7 @@ type nodeImpl struct {
 	membership peers.Membership // managed by the outside overarching server
 
 	raftLog      log.RaftLogs // required, persistent
-	cfg          common.ConfigManager
+	cfg          *common.Config
 	logger       *zap.Logger
 	statemachine plugs.StateMachine
 
