@@ -23,7 +23,7 @@ import (
 )
 
 func NewServer(cfg *common.Config, logger *zap.Logger) (*Server, error) {
-	membershipMgr, err := peers.NewMembershipWithStaticConfig(logger, cfg)
+	membership, err := peers.NewMembershipWithStaticConfig(logger, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -32,14 +32,18 @@ func NewServer(cfg *common.Config, logger *zap.Logger) (*Server, error) {
 
 	raftLog := log.NewRaftLogsImplAndLoad(cfg.GetDataDir(), logger, nil)
 	statemachine := plugs.NewStateMachineNoOpImpl()
-	node := node.NewNode(nodeID, cfg, logger, membershipMgr, statemachine, raftLog)
-	handlers := mkraft.NewHandlers(logger, node)
+
+	var n node.Node
+	consensus := node.NewConsensus(n, logger, membership)
+	n = node.NewNode(nodeID, cfg, logger, membership, statemachine, raftLog, consensus)
+
+	handlers := mkraft.NewHandlers(logger, n)
 
 	server := &Server{
 		logger:     logger,
 		cfg:        cfg,
-		node:       node,
-		membership: membershipMgr,
+		node:       n,
+		membership: membership,
 		handler:    handlers,
 	}
 	serverOptions := grpc.ChainUnaryInterceptor(

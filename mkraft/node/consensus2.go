@@ -18,12 +18,12 @@ type Consensus interface {
 }
 
 type consensus struct {
-	node       *nodeImpl
+	node       Node
 	logger     *zap.Logger
 	membership peers.Membership
 }
 
-func NewConsensus(node *nodeImpl, logger *zap.Logger, membership peers.Membership) Consensus {
+func NewConsensus(node Node, logger *zap.Logger, membership peers.Membership) Consensus {
 	return &consensus{
 		node:       node,
 		logger:     logger,
@@ -183,9 +183,9 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 			} else {
 				if resp.Success {
 					// update the peers' index
-					c.node.incrPeerIdxAfterLogRepli(nodeID, uint64(len(req.Entries)))
+					c.node.IncrPeerIdx(nodeID, uint64(len(req.Entries)))
 				} else {
-					c.node.decrPeerIdxAfterLogRepli(nodeID)
+					c.node.DecrPeerIdx(nodeID)
 				}
 				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 					Resp: resp,

@@ -29,7 +29,8 @@ func newMockNode(t *testing.T) *nodeImpl {
 	membership := peers.NewMockMembership(ctrl)
 	statemachine := plugs.NewMockStateMachine(ctrl)
 
-	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog)
+	consensus := NewMockConsensus(ctrl)
+	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog, consensus)
 	node := n.(*nodeImpl)
 	return node
 }
