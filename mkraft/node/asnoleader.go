@@ -346,7 +346,7 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestV
 			Term:        n.getCurrentTerm(),
 			CandidateId: n.NodeId,
 		}
-		resp, err := n.ConsensusRequestVote(electionCtx, req)
+		resp, err := n.consensus.ConsensusRequestVote(electionCtx, req)
 		if err != nil {
 			n.logger.Error("error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
 			close(consensusChan)

@@ -8,3 +8,65 @@
 
 // Package node is a generated GoMock package.
 package node
+
+import (
+	context "context"
+	reflect "reflect"
+
+	rpc "github.com/maki3cat/mkraft/rpc"
+	gomock "go.uber.org/mock/gomock"
+)
+
+// MockConsensus is a mock of Consensus interface.
+type MockConsensus struct {
+	ctrl     *gomock.Controller
+	recorder *MockConsensusMockRecorder
+	isgomock struct{}
+}
+
+// MockConsensusMockRecorder is the mock recorder for MockConsensus.
+type MockConsensusMockRecorder struct {
+	mock *MockConsensus
+}
+
+// NewMockConsensus creates a new mock instance.
+func NewMockConsensus(ctrl *gomock.Controller) *MockConsensus {
+	mock := &MockConsensus{ctrl: ctrl}
+	mock.recorder = &MockConsensusMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockConsensus) EXPECT() *MockConsensusMockRecorder {
+	return m.recorder
+}
+
+// ConsensusAppendEntries mocks base method.
+func (m *MockConsensus) ConsensusAppendEntries(ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsensusAppendEntries", ctx, peerReq, currentTerm)
+	ret0, _ := ret[0].(*AppendEntriesConsensusResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConsensusAppendEntries indicates an expected call of ConsensusAppendEntries.
+func (mr *MockConsensusMockRecorder) ConsensusAppendEntries(ctx, peerReq, currentTerm any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsensusAppendEntries", reflect.TypeOf((*MockConsensus)(nil).ConsensusAppendEntries), ctx, peerReq, currentTerm)
+}
+
+// ConsensusRequestVote mocks base method.
+func (m *MockConsensus) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsensusRequestVote", ctx, request)
+	ret0, _ := ret[0].(*MajorityRequestVoteResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConsensusRequestVote indicates an expected call of ConsensusRequestVote.
+func (mr *MockConsensusMockRecorder) ConsensusRequestVote(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsensusRequestVote", reflect.TypeOf((*MockConsensus)(nil).ConsensusRequestVote), ctx, request)
+}
