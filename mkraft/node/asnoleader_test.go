@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maki3cat/mkraft/common"
+	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/rpc"
 	"github.com/stretchr/testify/assert"
 
@@ -141,13 +143,17 @@ func TestNode_receiveAppendEntriesAsNoLeader_SameTerm_NoLogs(t *testing.T) {
 	assert.True(t, response.Success)
 }
 
-func TestNode_receiveAppendEntriesAsNoLeader_SameTerm_WithLogs(t *testing.T) {
+func TestNode_receiveAppendEntriesAsNoLeader_WithLogs_PreLogNotMatch(t *testing.T) {
 	n, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
 
 	// set the current term to 1
 	term := uint32(2)
 	n.storeCurrentTermAndVotedFor(term, "", false)
+
+	mockedRaftLog := n.raftLog.(*log.MockRaftLogs)
+	mockedRaftLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrPreLogNotMatch)
+
 	// req with term 2
 	req := &rpc.AppendEntriesRequest{
 		Term:         term,
@@ -162,6 +168,60 @@ func TestNode_receiveAppendEntriesAsNoLeader_SameTerm_WithLogs(t *testing.T) {
 
 	response := n.receiveAppendEntriesAsNoLeader(context.Background(), req)
 	assert.Equal(t, term, response.Term)
-	assert.True(t, response.Success)
+	assert.False(t, response.Success)
 
+}
+
+func TestNode_receiveAppendEntriesAsNoLeader_WithLogs_UnknownError(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	// set the current term to 1
+	term := uint32(2)
+	n.storeCurrentTermAndVotedFor(term, "", false)
+
+	mockedRaftLog := n.raftLog.(*log.MockRaftLogs)
+	mockedRaftLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("test mock error"))
+
+	// req with term 2
+	req := &rpc.AppendEntriesRequest{
+		Term:         term,
+		PrevLogIndex: 1,
+		PrevLogTerm:  1,
+		Entries: []*rpc.LogEntry{
+			{
+				Data: []byte("test command"),
+			},
+		},
+	}
+	assert.Panics(t, func() {
+		n.receiveAppendEntriesAsNoLeader(context.Background(), req)
+	})
+}
+
+func TestNode_receiveAppendEntriesAsNoLeader_WithLogs_HappyPath(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	// set the current term to 1
+	term := uint32(2)
+	n.storeCurrentTermAndVotedFor(term, "", false)
+
+	mockedRaftLog := n.raftLog.(*log.MockRaftLogs)
+	mockedRaftLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+	// req with term 2
+	req := &rpc.AppendEntriesRequest{
+		Term:         term,
+		PrevLogIndex: 1,
+		PrevLogTerm:  1,
+		Entries: []*rpc.LogEntry{
+			{
+				Data: []byte("test command"),
+			},
+		},
+	}
+	response := n.receiveAppendEntriesAsNoLeader(context.Background(), req)
+	assert.Equal(t, term, response.Term)
+	assert.True(t, response.Success)
 }
