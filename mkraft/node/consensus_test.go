@@ -3,7 +3,6 @@ package node
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -11,24 +10,7 @@ import (
 	"github.com/maki3cat/mkraft/mkraft/peers"
 	"github.com/maki3cat/mkraft/rpc"
 	"go.uber.org/mock/gomock"
-	"go.uber.org/zap"
 )
-
-func getMockNode(mockMembership *peers.MockMembership) *nodeImpl {
-	node := &nodeImpl{
-		membership:  mockMembership,
-		logger:      zap.NewNop(),
-		stateRWLock: &sync.RWMutex{},
-		commitIndex: 0,
-		lastApplied: 0,
-		nextIndex:   map[string]uint64{},
-		matchIndex:  map[string]uint64{},
-		cfg:         common.GetDefaultConfig(),
-	}
-	consensus := NewConsensus(node, zap.NewNop(), mockMembership)
-	node.consensus = consensus
-	return node
-}
 
 func TestCalculateIfMajorityMet(t *testing.T) {
 	tests := []struct {
@@ -177,11 +159,15 @@ func TestNode_ConsensusRequestVote_HappyPath(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockMembership := peers.NewMockMembership(ctrl)
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
 
-			n := getMockNode(mockMembership)
+			mockedMembership := peers.NewMockMembership(ctrl)
+			mockedMembership.EXPECT().GetTotalMemberCount().Return(3)
+			mockedMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+
+			n, ctrl := newMockNodeWithConsensus(t, mockedMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			req := &rpc.RequestVoteRequest{
 				Term:         1,
@@ -192,9 +178,6 @@ func TestNode_ConsensusRequestVote_HappyPath(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
-
-			mockMembership.EXPECT().GetTotalMemberCount().Return(3)
-			mockMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
 
 			expectCall1 := mockClient1.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
 				Term:        1,
@@ -251,10 +234,8 @@ func TestNode_ConsensusRequestVote_MajorityFail(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockMembership := peers.NewMockMembership(ctrl)
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
-			node := getMockNode(mockMembership)
 
 			req := &rpc.RequestVoteRequest{
 				Term:         1,
@@ -266,8 +247,11 @@ func TestNode_ConsensusRequestVote_MajorityFail(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
-			mockMembership.EXPECT().GetTotalMemberCount().Return(3)
-			mockMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+			mockedMembership := peers.NewMockMembership(ctrl)
+			mockedMembership.EXPECT().GetTotalMemberCount().Return(3)
+			mockedMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+			node, ctrl := newMockNodeWithConsensus(t, mockedMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			expectCall1 := mockClient1.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
 				Term:        1,
@@ -317,10 +301,8 @@ func TestNode_ConsensusRequestVote_HigherTerm(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockMembership := peers.NewMockMembership(ctrl)
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
-			node := getMockNode(mockMembership)
 
 			req := &rpc.RequestVoteRequest{
 				Term:         1,
@@ -332,8 +314,11 @@ func TestNode_ConsensusRequestVote_HigherTerm(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
-			mockMembership.EXPECT().GetTotalMemberCount().Return(3)
-			mockMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+			mockedMembership := peers.NewMockMembership(ctrl)
+			mockedMembership.EXPECT().GetTotalMemberCount().Return(3)
+			mockedMembership.EXPECT().GetAllPeerClients().Return([]peers.PeerClient{mockClient1, mockClient2}, nil)
+			node, ctrl := newMockNodeWithConsensus(t, mockedMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			expectCall1 := mockClient1.EXPECT().RequestVoteWithRetry(gomock.Any(), req).Return(&rpc.RequestVoteResponse{
 				Term:        2, // Higher term
@@ -390,7 +375,9 @@ func TestNode_ConsensusRequestVote_ContextCancelled(t *testing.T) {
 			mockMembership := peers.NewMockMembership(ctrl)
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
-			node := getMockNode(mockMembership)
+
+			node, ctrl := newMockNodeWithConsensus(t, mockMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			req := &rpc.RequestVoteRequest{
 				Term:         1,
@@ -455,9 +442,6 @@ func TestNode_ConsensusRequestVote_MembershipError(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockMembership := peers.NewMockMembership(ctrl)
-			n := getMockNode(mockMembership)
-
 			req := &rpc.RequestVoteRequest{
 				Term:         1,
 				CandidateId:  "node1",
@@ -468,8 +452,11 @@ func TestNode_ConsensusRequestVote_MembershipError(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
-			mockMembership.EXPECT().GetTotalMemberCount().Return(3)
-			mockMembership.EXPECT().GetAllPeerClients().Return(nil, errors.New("membership error"))
+			mockedMembership := peers.NewMockMembership(ctrl)
+			mockedMembership.EXPECT().GetTotalMemberCount().Return(3)
+			mockedMembership.EXPECT().GetAllPeerClients().Return(nil, errors.New("membership error"))
+			n, ctrl := newMockNodeWithConsensus(t, mockedMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			_, err := n.consensus.ConsensusRequestVote(ctx, req)
 			if tt.sleep {
@@ -519,12 +506,14 @@ func TestConsensusRequestVoteContext(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
 			mockMembership := peers.NewMockMembership(ctrl)
 			mockClient := peers.NewMockPeerClient(ctrl)
-			node := getMockNode(mockMembership)
+			node, ctrl := newMockNodeWithConsensus(t, mockMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			req := &rpc.RequestVoteRequest{
 				Term:         1,
@@ -581,7 +570,8 @@ func TestNode_ConsensusAppendEntries_HappyPath(t *testing.T) {
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
 
-			node := getMockNode(mockMembership)
+			node, ctrl := newMockNodeWithConsensus(t, mockMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			peerReqs := map[string]*rpc.AppendEntriesRequest{
 				"node2": {
@@ -669,7 +659,8 @@ func TestNode_ConsensusAppendEntries_HigherTerm(t *testing.T) {
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
 
-			node := getMockNode(mockMembership)
+			node, ctrl := newMockNodeWithConsensus(t, mockMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			peerReqs := map[string]*rpc.AppendEntriesRequest{
 				"node2": {
@@ -751,10 +742,6 @@ func TestNode_ConsensusAppendEntries_MembershipError(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockMembership := peers.NewMockMembership(ctrl)
-
-			node := getMockNode(mockMembership)
-
 			peerReqs := map[string]*rpc.AppendEntriesRequest{
 				"node2": {
 					Term:         1,
@@ -769,8 +756,11 @@ func TestNode_ConsensusAppendEntries_MembershipError(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
+			mockMembership := peers.NewMockMembership(ctrl)
 			mockMembership.EXPECT().GetTotalMemberCount().Return(3)
 			mockMembership.EXPECT().GetAllPeerClientsV2().Return(nil, errors.New("membership error"))
+			node, ctrl := newMockNodeWithConsensus(t, mockMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			_, err := node.consensus.ConsensusAppendEntries(ctx, peerReqs, 1)
 			if tt.sleep {
@@ -810,7 +800,8 @@ func TestNode_ConsensusAppendEntries_ContextCancelled(t *testing.T) {
 			mockClient1 := peers.NewMockPeerClient(ctrl)
 			mockClient2 := peers.NewMockPeerClient(ctrl)
 
-			node := getMockNode(mockMembership)
+			node, ctrl := newMockNodeWithConsensus(t, mockMembership)
+			defer cleanUpTmpDir(ctrl)
 
 			peerReqs := map[string]*rpc.AppendEntriesRequest{
 				"node2": {
@@ -872,10 +863,7 @@ func TestConsensusAppendEntries_SmallerTermResponse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMembership := peers.NewMockMembership(ctrl)
 	mockClient := peers.NewMockPeerClient(ctrl)
-
-	node := getMockNode(mockMembership)
 
 	peerReqs := map[string]*rpc.AppendEntriesRequest{
 		"node2": {
@@ -892,10 +880,13 @@ func TestConsensusAppendEntries_SmallerTermResponse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 
+	mockMembership := peers.NewMockMembership(ctrl)
 	mockMembership.EXPECT().GetTotalMemberCount().Return(3)
 	mockMembership.EXPECT().GetAllPeerClientsV2().Return(map[string]peers.PeerClient{
 		"node2": mockClient,
 	}, nil)
+	node, ctrl := newMockNodeWithConsensus(t, mockMembership)
+	defer cleanUpTmpDir(ctrl)
 
 	// Mock response with term smaller than current term
 	mockClient.EXPECT().AppendEntriesWithRetry(gomock.Any(), peerReqs["node2"]).

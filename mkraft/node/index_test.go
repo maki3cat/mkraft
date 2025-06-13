@@ -9,14 +9,14 @@ import (
 )
 
 func TestGetIdxFileName(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 	assert.Contains(t, node.getIdxFileName(), "index.rft")
 }
 
 func TestUnsafeSaveAndLoadIdx(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	// Set test values
 	node.commitIndex = 5
@@ -31,7 +31,8 @@ func TestUnsafeSaveAndLoadIdx(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create new node to test load
-	newNode := newMockNode(t)
+	newNode, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 	err = newNode.unsafeLoadIdx()
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(5), newNode.commitIndex)
@@ -39,8 +40,8 @@ func TestUnsafeSaveAndLoadIdx(t *testing.T) {
 }
 
 func TestGetCommitIdxAndLastApplied(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	// Set test values
 	node.commitIndex = 10
@@ -52,8 +53,8 @@ func TestGetCommitIdxAndLastApplied(t *testing.T) {
 }
 
 func TestGetCommitIdx(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	node.commitIndex = 15
 
@@ -62,8 +63,8 @@ func TestGetCommitIdx(t *testing.T) {
 }
 
 func TestIncrementCommitIdx(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	t.Run("successful increment", func(t *testing.T) {
 		node.commitIndex = 5
@@ -82,8 +83,8 @@ func TestIncrementCommitIdx(t *testing.T) {
 }
 
 func TestIncrementLastApplied(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 	t.Run("successful increment", func(t *testing.T) {
 		node.commitIndex = 10
 		node.lastApplied = 5
@@ -101,8 +102,8 @@ func TestIncrementLastApplied(t *testing.T) {
 }
 
 func TestIncrementPeersNextIndexOnSuccess(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	// Test first time increment
 	node.incrPeerIdxAfterLogRepli("peer1", 3)
@@ -116,8 +117,8 @@ func TestIncrementPeersNextIndexOnSuccess(t *testing.T) {
 }
 
 func TestDecrementPeersNextIndexOnFailure(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	node.nextIndex["peer1"] = 5
 
@@ -131,8 +132,8 @@ func TestDecrementPeersNextIndexOnFailure(t *testing.T) {
 }
 
 func TestGetPeersNextIndex(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	node.nextIndex["peer1"] = 10
 
@@ -146,8 +147,8 @@ func TestGetPeersNextIndex(t *testing.T) {
 }
 
 func TestGetInitDefaultValuesForPeer(t *testing.T) {
-	node := newMockNode(t)
-	defer cleanUpTmpDir()
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
 
 	nextIndex, matchIndex := node.getInitDefaultValuesForPeer()
 	assert.Equal(t, uint64(1), nextIndex) // Assuming GetLastLogIdx returns 0 for empty log

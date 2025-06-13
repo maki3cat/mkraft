@@ -150,6 +150,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 				case response, ok := <-consensusChan: // some response from last election
 
 					if !ok || response == nil {
+						// implementaiton gap: add timeout here on error of a node
 						n.logger.Error("error in consensusChan, try to re-elect after another election timeout")
 						time.Sleep(n.cfg.GetElectionTimeout())
 						continue
@@ -281,7 +282,9 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 	}()
 
 	// 2. update the term
+	returnedTerm := currentTerm
 	if reqTerm > currentTerm {
+		returnedTerm = reqTerm
 		err := n.storeCurrentTermAndVotedFor(reqTerm, "", false) // did not vote for anyone
 		if err != nil {
 			n.logger.Error(
@@ -293,20 +296,30 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 
 	// 3. append logs
 	if len(req.Entries) > 0 {
+		// todo: what if the prevLogIndex is not the last log index?
+		// todo: I haven't checked it?
 		logs := make([][]byte, len(req.Entries))
 		for idx, entry := range req.Entries {
 			logs[idx] = entry.Data
 		}
 		err := n.raftLog.UpdateLogsInBatch(ctx, req.PrevLogIndex, logs, req.Term)
 		if err != nil {
+			if err == common.ErrPreLogNotMatch {
+				response = rpc.AppendEntriesResponse{
+					Term:    returnedTerm,
+					Success: false,
+				}
+				return &response
+			}
 			// this error cannot be not match,
 			// because the prevLogIndex and prevLogTerm has been checked
+			n.logger.Error("error in UpdateLogsInBatch", zap.Error(err))
 			panic(err) // todo: critical error, cannot continue, not sure how to handle this
 		}
 	}
 
 	response = rpc.AppendEntriesResponse{
-		Term:    currentTerm,
+		Term:    returnedTerm,
 		Success: true,
 	}
 	return &response
@@ -319,9 +332,6 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 // if votes received from majority of servers: become leader
 // if AppendEntries RPC received from new leader: convert to follower
 // if election timeout elapses: start new election
-
-// implementation gap:
-// triggers peerCnt + 1 goroutines for fan-out rpc and fan-in the responses
 func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
