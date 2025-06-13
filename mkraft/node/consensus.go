@@ -139,6 +139,8 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.Reque
 	return nil, common.ErrInvariantsBroken
 }
 
+// if the majority pper-rpc fail, the err is nil and the resp.Success is false because can be multiple errors; the caller shall recall;
+// if other parts fail, the err is not nil and the resp.Success is false; the caller shall retry;
 func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error) {
 	requestID := common.GetRequestID(ctx)
 	total := c.membership.GetTotalMemberCount()

@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sync"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/maki3cat/mkraft/rpc"
 	"go.uber.org/zap"
 )
+
+// ---------------------------------------CONTROL FLOW: THE LEADER-------------------------------------
 
 /*
 SECTION1: THE COMMON RULE (paper)
@@ -107,9 +110,8 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 				tickerForHeartbeat.Reset(heartbeatDuration)
 				singleJobResult, err = n.syncDoHeartbeat(ctx)
 				if err != nil {
-					n.logger.Error("error in sending heartbeat, omit it and continue", zap.Error(err))
+					n.logger.Error("error in sending heartbeat, omit it for next retry", zap.Error(err))
 				}
-
 			// task2: handle the client command, need to change raftlog/state machine -> as leader, may degrade to follower
 			case clientCmd := <-n.clientCommandCh:
 				tickerForHeartbeat.Reset(heartbeatDuration)
@@ -151,7 +153,8 @@ type JobResult struct {
 	VotedFor string
 }
 
-// @return: shall degrade to follower or not
+// @return: shall degrade to follower or not,
+// @return: if err is not nil, the caller shall retry
 func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	currentTerm := n.getCurrentTerm()
@@ -183,22 +186,30 @@ func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 
 	ctxTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetRPCRequestTimeout())
 	defer cancel()
+
+	// the handling of success/failure is not aligned with the consensus method
 	resp, err := n.consensus.ConsensusAppendEntries(ctxTimeout, reqs, n.CurrentTerm)
 	if err != nil {
 		n.logger.Error("error in sending append entries to one node", zap.Error(err))
 		return JobResult{ShallDegrade: false}, err
 	}
 
+	// shouldn't have this case, fatal error -> it won't happen
+	if resp.Term > currentTerm && resp.Success {
+		panic("should not happen, break the property of Election Safety")
+	}
+
 	if resp.Success {
 		n.logger.Info("append entries success", zap.String("requestID", requestID))
 		return JobResult{ShallDegrade: false}, nil
 	} else {
+		// another failed reason is the prelog is not correct
 		if resp.Term > currentTerm {
 			n.logger.Warn("peer's term is greater than current term", zap.String("requestID", requestID))
 			return JobResult{ShallDegrade: true, Term: TermRank(resp.Term)}, nil
 		} else {
-			// todo: the unsafe panic is temporarily used for debugging
-			panic("failed append entries, but without not a higher term, should not happen")
+			// should retry: may be from the network error and the majority failed
+			return JobResult{ShallDegrade: false}, errors.New("append entries failed, shall retry")
 		}
 	}
 }
