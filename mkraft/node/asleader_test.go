@@ -3,8 +3,11 @@ package node
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/mkraft/peers"
@@ -35,11 +38,11 @@ func TestNode_getLogsToCatchupForPeers_HappyPath(t *testing.T) {
 
 	raftLog.EXPECT().GetTermByIndex(uint64(0)).Return(uint32(1), nil).Times(1)
 	raftLog.EXPECT().GetTermByIndex(uint64(2)).Return(uint32(2), nil).Times(1)
-	// raftLog.EXPECT().GetLastLogIdx().Return(uint64(2)).AnyTimes()
 
 	peerNodeIDs := []string{"peer1", "peer2"}
 	result, err := n.getLogsToCatchupForPeers(peerNodeIDs)
 
+	// peer one
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(result))
 	assert.Equal(t, uint64(0), result["peer1"].LastLogIndex)
@@ -48,6 +51,7 @@ func TestNode_getLogsToCatchupForPeers_HappyPath(t *testing.T) {
 	assert.Equal(t, []byte("test1"), result["peer1"].Entries[0].Commands)
 	assert.Equal(t, []byte("test2"), result["peer1"].Entries[1].Commands)
 
+	// peer two
 	assert.Equal(t, uint64(2), result["peer2"].LastLogIndex)
 	assert.Equal(t, uint32(2), result["peer2"].LastLogTerm)
 	assert.Equal(t, 0, len(result["peer2"].Entries))
@@ -97,6 +101,9 @@ func TestNode_handleRequestVoteAsLeader_VoteGranted(t *testing.T) {
 	defer cleanUpTmpDir(ctrl)
 
 	n.CurrentTerm = 1
+	raftLog := n.raftLog.(*log.MockRaftLogs)
+	raftLog.EXPECT().GetLastLogIdxAndTerm().Return(uint64(0), uint32(0))
+
 	req := &utils.RequestVoteInternalReq{
 		Req: &rpc.RequestVoteRequest{
 			Term:         2,
@@ -115,6 +122,58 @@ func TestNode_handleRequestVoteAsLeader_VoteGranted(t *testing.T) {
 
 	resp := <-req.RespChan
 	assert.True(t, resp.Resp.VoteGranted)
+	assert.Equal(t, uint32(2), resp.Resp.Term)
+}
+
+func TestNode_handleRequestVoteAsLeader_SameTerm(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	n.storeCurrentTermAndVotedFor(2, "node1", true)
+	req := &utils.RequestVoteInternalReq{
+		Req: &rpc.RequestVoteRequest{
+			Term:         2,
+			CandidateId:  "candidate1",
+			LastLogIndex: 1,
+			LastLogTerm:  2,
+		},
+		RespChan: make(chan *utils.RPCRespWrapper[*rpc.RequestVoteResponse], 1),
+	}
+
+	result, err := n.handleRequestVoteAsLeader(req)
+
+	assert.NoError(t, err)
+	assert.False(t, result.ShallDegrade)
+
+	resp := <-req.RespChan
+	assert.False(t, resp.Resp.VoteGranted)
+	assert.Equal(t, uint32(2), resp.Resp.Term)
+}
+
+func TestNode_handleRequestVoteAsLeader_LowerTerm(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	n.storeCurrentTermAndVotedFor(3, "node1", true)
+
+	req := &utils.RequestVoteInternalReq{
+		Req: &rpc.RequestVoteRequest{
+			Term:         2,
+			CandidateId:  "candidate1",
+			LastLogIndex: 1,
+			LastLogTerm:  2,
+		},
+		RespChan: make(chan *utils.RPCRespWrapper[*rpc.RequestVoteResponse], 1),
+	}
+
+	result, err := n.handleRequestVoteAsLeader(req)
+
+	assert.NoError(t, err)
+	assert.False(t, result.ShallDegrade)
+
+	resp := <-req.RespChan
+	assert.False(t, resp.Resp.VoteGranted)
+	assert.Equal(t, uint32(3), resp.Resp.Term)
 }
 
 // ---------------------------------recordLeaderState---------------------------------
@@ -126,16 +185,31 @@ func TestNode_recordLeaderState(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	n.NodeId = "test-node"
+	n.NodeId = "test-node-1"
 	n.recordLeaderState()
 
 	// Verify file exists and contains node ID
 	data, err := os.ReadFile("leader.tmp")
 	assert.NoError(t, err)
 	assert.Contains(t, string(data), "test-node")
+
+	time.Sleep(10 * time.Millisecond)
+
+	n.NodeId = "test-node-2"
+	n.recordLeaderState()
+
+	data, err = os.ReadFile("leader.tmp")
+	assert.NoError(t, err)
+	// split data by \n
+	dataStr := string(data)
+	lines := strings.Split(dataStr, "\n")
+	fmt.Println(lines)
+	assert.Contains(t, lines[0], "test-node-1")
+	assert.Contains(t, lines[1], "test-node-2")
 }
 
 // --------------------------------- syncDoLogReplication ---------------------------------
+// todo: add more test cases for this method
 func TestNode_syncDoLogReplication_HappyPath(t *testing.T) {
 	n, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)

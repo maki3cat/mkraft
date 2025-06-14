@@ -383,9 +383,9 @@ func (n *nodeImpl) recordLeaderState() {
 }
 
 func (n *nodeImpl) getLogsToCatchupForPeers(peerNodeIDs []string) (map[string]log.CatchupLogs, error) {
+	// todo: can be batch reading
 	result := make(map[string]log.CatchupLogs)
 	for _, peerNodeID := range peerNodeIDs {
-		// todo: can be batch reading
 		nextID := n.getPeersNextIndex(peerNodeID)
 		logs, err := n.raftLog.ReadLogsInBatchFromIdx(nextID)
 		if err != nil {
