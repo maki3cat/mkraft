@@ -33,6 +33,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	n.logger.Info("node acquires to run in FOLLOWER state")
 	n.sem.Acquire(ctx, 1)
 	n.logger.Info("acquired semaphore in FOLLOWER state")
+	go n.recordNodeState() // trivial-path
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
@@ -113,6 +114,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 	if n.GetNodeState() != StateCandidate {
 		panic("node is not in CANDIDATE state")
 	}
+	go n.recordNodeState() // trivial-path
 
 	n.logger.Info("node starts to acquiring CANDIDATE state")
 	n.sem.Acquire(ctx, 1)

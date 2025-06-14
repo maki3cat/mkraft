@@ -3,7 +3,6 @@ package node
 import (
 	"context"
 	"errors"
-	"os"
 	"sync"
 	"time"
 
@@ -70,8 +69,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	n.logger.Info("acquired the Semaphore as the LEADER state")
 	defer n.sem.Release(1)
 
-	// debugging
-	n.recordLeaderState()
+	go n.recordNodeState() // trivial-path
 
 	// maki: this is a tricky design (the whole design of the log/client command application is tricky)
 	// todo: catch up the log application to make sure lastApplied == commitIndex for the leader
@@ -360,25 +358,6 @@ func (n *nodeImpl) handleRequestVoteAsLeader(internalReq *utils.RequestVoteInter
 		return JobResult{ShallDegrade: true, Term: TermRank(internalReq.Req.Term)}, nil
 	} else {
 		return JobResult{ShallDegrade: false}, nil
-	}
-}
-
-func (n *nodeImpl) recordLeaderState() {
-	stateFilePath := "leader.tmp"
-	file, err := os.OpenFile(stateFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		n.logger.Error("failed to open state file", zap.Error(err))
-		panic(err)
-	}
-	defer file.Close()
-
-	currentTime := time.Now().Format(time.RFC3339)
-	entry := currentTime + " " + n.NodeId + "\n"
-
-	_, writeErr := file.WriteString(entry)
-	if writeErr != nil {
-		n.logger.Error("failed to append NodeID to state file", zap.Error(writeErr))
-		panic(writeErr)
 	}
 }
 

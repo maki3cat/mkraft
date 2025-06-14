@@ -2,7 +2,11 @@ package node
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"sync"
+	"testing"
+	"time"
 
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/log"
@@ -10,6 +14,7 @@ import (
 	"github.com/maki3cat/mkraft/mkraft/plugs"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 )
@@ -276,4 +281,50 @@ func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVo
 		Term:        currentTerm,
 		VoteGranted: voteGranted,
 	}
+}
+
+// trivial-path
+// record the node state change history for viewing
+// since it is a trivial-path, we don't let it impact the functions
+func (n *nodeImpl) recordNodeState() {
+	defer func() {
+		if r := recover(); r != nil {
+			n.logger.Error("panic in recordNodeState, we continue to run", zap.Any("panic", r))
+		}
+	}()
+
+	stateFilePath := getLeaderStateFilePath(n.NodeId, n.cfg.GetDataDir())
+	file, err := os.OpenFile(stateFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		n.logger.Error("failed to open recordNodeState file, we continue to run", zap.Error(err))
+	} else {
+		defer file.Close()
+	}
+
+	currentTime := time.Now().Format(time.RFC3339)
+	entry := fmt.Sprintf("%s#%s#%s\n", currentTime, n.NodeId, n.state)
+
+	_, writeErr := file.WriteString(entry)
+	if writeErr != nil {
+		n.logger.Error("failed to append NodeID to recordNodeState file, we continue to run", zap.Error(writeErr))
+	}
+}
+
+// ---------------------------------recordLeaderState---------------------------------
+func TestNode_recordLeaderState(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	n.NodeId = "test-node-1"
+	n.state = StateLeader
+
+	n.recordNodeState()
+
+	// Verify file exists and contains node ID
+	filePath := getLeaderStateFilePath(n.NodeId, n.cfg.GetDataDir())
+	data, err := os.ReadFile(filePath)
+	fmt.Println(string(data))
+	assert.NoError(t, err)
+	assert.Contains(t, string(data), n.NodeId)
+	assert.Contains(t, string(data), StateLeader.String())
 }

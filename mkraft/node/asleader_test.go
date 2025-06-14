@@ -3,11 +3,7 @@ package node
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/mkraft/peers"
@@ -174,38 +170,6 @@ func TestNode_handleRequestVoteAsLeader_LowerTerm(t *testing.T) {
 	resp := <-req.RespChan
 	assert.False(t, resp.Resp.VoteGranted)
 	assert.Equal(t, uint32(3), resp.Resp.Term)
-}
-
-// ---------------------------------recordLeaderState---------------------------------
-func TestNode_recordLeaderState(t *testing.T) {
-	n, ctrl := newMockNode(t)
-	defer cleanUpTmpDir(ctrl)
-	defer func() {
-		err := os.Remove("leader.tmp")
-		assert.NoError(t, err)
-	}()
-
-	n.NodeId = "test-node-1"
-	n.recordLeaderState()
-
-	// Verify file exists and contains node ID
-	data, err := os.ReadFile("leader.tmp")
-	assert.NoError(t, err)
-	assert.Contains(t, string(data), "test-node")
-
-	time.Sleep(10 * time.Millisecond)
-
-	n.NodeId = "test-node-2"
-	n.recordLeaderState()
-
-	data, err = os.ReadFile("leader.tmp")
-	assert.NoError(t, err)
-	// split data by \n
-	dataStr := string(data)
-	lines := strings.Split(dataStr, "\n")
-	fmt.Println(lines)
-	assert.Contains(t, lines[0], "test-node-1")
-	assert.Contains(t, lines[1], "test-node-2")
 }
 
 // --------------------------------- syncDoLogReplication ---------------------------------
