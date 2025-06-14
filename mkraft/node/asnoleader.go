@@ -222,8 +222,8 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 
 // ---------------------------------------small unit functions for noleader -------------------------------------
 // noleader-WORKER-2 aside from the apply worker-1
-// this worker is used to handle client commands
-// which can be run independently of the main logic
+// this worker is forever looping to handle client commands, should be called in a separate goroutine
+// quits on the context done, and set the waitGroup before return
 // maki: the tricky part is that the client command needs NOT to be drained but the apply signal needs to be drained
 func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWaitGroup *sync.WaitGroup) {
 	defer workerWaitGroup.Done()
@@ -239,8 +239,9 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 				return
 			case cmd := <-n.leaderApplyCh:
 				n.logger.Warn("client-command-worker, received client command")
-				// easy trivial work, can be done in parallel with the main logic
-				// feature: add delegation to the leader
+				// todo: add delegation to the leader
+
+				// easy trivial work, can be done in parallel with the main logic, in case this dirty messages interfere with the main logicj
 				cmd.RespChan <- &utils.RPCRespWrapper[*rpc.ClientCommandResponse]{
 					Resp: &rpc.ClientCommandResponse{
 						Result: nil,

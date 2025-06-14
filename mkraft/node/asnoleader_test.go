@@ -3,16 +3,64 @@ package node
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/log"
+	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
 	"github.com/stretchr/testify/assert"
 
 	"go.uber.org/mock/gomock"
 )
+
+// ----------noleaderWorkerForClientCommand------
+func TestNode_noleaderWorkerForClientCommand_ContextCancelled(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+	n.leaderApplyCh = make(chan *utils.ClientCommandInternalReq, 10)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	bg := context.Background()
+	ctx, cancel := context.WithCancel(bg)
+	defer cancel()
+	go n.noleaderWorkerForClientCommand(ctx, wg)
+	cancel()
+	time.Sleep(100 * time.Millisecond)
+	wg.Wait()
+}
+
+func TestNode_noleaderWorkerForClientCommand_HappyPath(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+	n.leaderApplyCh = make(chan *utils.ClientCommandInternalReq, 10)
+	req := &utils.ClientCommandInternalReq{
+		Req: &rpc.ClientCommandRequest{
+			Command: []byte("test command"),
+		},
+		RespChan: make(chan *utils.RPCRespWrapper[*rpc.ClientCommandResponse], 1),
+	}
+	n.leaderApplyCh <- req
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	bg := context.Background()
+	ctx, cancel := context.WithCancel(bg)
+	defer cancel()
+	go n.noleaderWorkerForClientCommand(ctx, wg)
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case resp, ok := <-req.RespChan:
+		assert.True(t, ok)
+		assert.Equal(t, common.ErrNotLeader, resp.Err)
+		assert.Nil(t, resp.Resp.Result)
+	default:
+		assert.Fail(t, "should not happen")
+	}
+	cancel()
+	wg.Wait()
+}
 
 // --------asyncSendElection--------
 
