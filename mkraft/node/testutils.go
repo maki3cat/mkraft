@@ -43,6 +43,8 @@ func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 }
 
 func cleanUpTmpDir(ctrl *gomock.Controller) {
-	ctrl.Finish()
+	if ctrl != nil {
+		ctrl.Finish()
+	}
 	os.RemoveAll("./tmp/")
 }

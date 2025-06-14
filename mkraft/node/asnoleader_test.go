@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -62,7 +63,130 @@ func TestNode_noleaderWorkerForClientCommand_HappyPath(t *testing.T) {
 	wg.Wait()
 }
 
-// --------asyncSendElection--------
+// ---------------------------------receiveAppendEntriesAsNoLeader---------------------------------
+func TestNode_receiveAppendEntriesAsNoLeader_HappyPath(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	n.noleaderApplySignalCh = make(chan bool, 10)
+	mockedLog := n.raftLog.(*log.MockRaftLogs)
+	mockedLog.EXPECT().CheckPreLog(gomock.Any(), gomock.Any()).Return(true)
+	mockedLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+	req := &rpc.AppendEntriesRequest{
+		Term:         1,
+		LeaderId:     "leader1",
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries: []*rpc.LogEntry{
+			{Data: []byte("test1")},
+			{Data: []byte("test2")},
+		},
+		LeaderCommit: 1,
+	}
+	fmt.Println("req", req, "currentTerm", n.getCurrentTerm())
+
+	resp := n.receiveAppendEntriesAsNoLeader(context.Background(), req)
+	assert.True(t, resp.Success)
+	assert.Equal(t, uint32(1), resp.Term)
+
+	// Verify apply signal was sent
+	select {
+	case <-n.noleaderApplySignalCh:
+	default:
+		assert.Fail(t, "apply signal not sent")
+	}
+}
+
+func TestNode_receiveAppendEntriesAsNoLeader_StaleTerm(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	n.storeCurrentTermAndVotedFor(2, "", false)
+
+	req := &rpc.AppendEntriesRequest{
+		Term:         1, // Stale term
+		LeaderId:     "leader1",
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries:      []*rpc.LogEntry{},
+		LeaderCommit: 0,
+	}
+
+	resp := n.receiveAppendEntriesAsNoLeader(context.Background(), req)
+	assert.False(t, resp.Success)
+	assert.Equal(t, uint32(2), resp.Term)
+}
+
+func TestNode_receiveAppendEntriesAsNoLeader_PreLogMismatch(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	mockedLog := n.raftLog.(*log.MockRaftLogs)
+	mockedLog.EXPECT().CheckPreLog(gomock.Any(), gomock.Any()).Return(false)
+
+	req := &rpc.AppendEntriesRequest{
+		Term:         1,
+		LeaderId:     "leader1",
+		PrevLogIndex: 5, // Mismatched index
+		PrevLogTerm:  2,
+		Entries:      []*rpc.LogEntry{},
+		LeaderCommit: 0,
+	}
+
+	resp := n.receiveAppendEntriesAsNoLeader(context.Background(), req)
+	assert.False(t, resp.Success)
+	assert.Equal(t, uint32(0), resp.Term)
+}
+
+func TestNode_receiveAppendEntriesAsNoLeader_HigherTerm(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	n.noleaderApplySignalCh = make(chan bool, 10)
+	mockedLog := n.raftLog.(*log.MockRaftLogs)
+	mockedLog.EXPECT().CheckPreLog(gomock.Any(), gomock.Any()).Return(true)
+
+	req := &rpc.AppendEntriesRequest{
+		Term:         2, // Higher term
+		LeaderId:     "leader1",
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries:      []*rpc.LogEntry{},
+		LeaderCommit: 0,
+	}
+
+	resp := n.receiveAppendEntriesAsNoLeader(context.Background(), req)
+	assert.True(t, resp.Success)
+	assert.Equal(t, uint32(2), resp.Term)
+}
+
+func TestNode_receiveAppendEntriesAsNoLeader_UpdateLogError(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+
+	n.noleaderApplySignalCh = make(chan bool, 10)
+	mockedLog := n.raftLog.(*log.MockRaftLogs)
+	mockedLog.EXPECT().CheckPreLog(gomock.Any(), gomock.Any()).Return(true)
+	mockedLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(common.ErrPreLogNotMatch)
+
+	req := &rpc.AppendEntriesRequest{
+		Term:         1,
+		LeaderId:     "leader1",
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries: []*rpc.LogEntry{
+			{Data: []byte("test")},
+		},
+		LeaderCommit: 0,
+	}
+
+	resp := n.receiveAppendEntriesAsNoLeader(context.Background(), req)
+	assert.False(t, resp.Success)
+	assert.Equal(t, uint32(0), resp.Term)
+}
+
+// ---------------------------------asyncSendElection---------------------------------
 
 func TestNode_asyncSendElection_HappyPath(t *testing.T) {
 
