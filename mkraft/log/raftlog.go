@@ -117,7 +117,6 @@ func (rl *raftLogs) GetTermByIndex(index uint64) (uint32, error) {
 func (rl *raftLogs) GetLastLogIdx() uint64 {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
-	// todo: since it uses slice, the uint64 is not necessary
 	return uint64(len(rl.logs))
 }
 

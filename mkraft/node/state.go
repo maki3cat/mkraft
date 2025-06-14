@@ -2,10 +2,14 @@ package node
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/maki3cat/mkraft/common"
 	"go.uber.org/zap"
 )
 
@@ -54,19 +58,27 @@ func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 	}
 	defer file.Close()
 
-	var term uint32
-	var voteFor string
-	cnt, err := fmt.Fscanf(file, "%d,%s", &term, &voteFor)
+	// can also be "1," which is valid for not voting for anyone
+	content, err := io.ReadAll(file)
 	if err != nil {
 		return fmt.Errorf("error reading raft state file: %w", err)
 	}
-
-	if cnt != 2 {
-		return fmt.Errorf("expected 2 values in raft state file, got %d", cnt)
+	parts := strings.Split(string(content), ",")
+	if len(parts) == 0 || len(parts) > 2 {
+		return common.ErrCorruptPersistentFile
 	}
 
-	n.CurrentTerm = term
-	n.VotedFor = voteFor
+	if len(parts) == 1 {
+		n.VotedFor = ""
+	} else {
+		n.VotedFor = strings.TrimSpace(parts[1])
+	}
+
+	term64, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
+	if err != nil {
+		return common.ErrCorruptPersistentFile
+	}
+	n.CurrentTerm = uint32(term64)
 	return nil
 }
 

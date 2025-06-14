@@ -33,6 +33,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	n.logger.Info("node acquires to run in FOLLOWER state")
 	n.sem.Acquire(ctx, 1)
 	n.logger.Info("acquired semaphore in FOLLOWER state")
+	go n.recordNodeState() // trivial-path
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
@@ -113,6 +114,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 	if n.GetNodeState() != StateCandidate {
 		panic("node is not in CANDIDATE state")
 	}
+	go n.recordNodeState() // trivial-path
 
 	n.logger.Info("node starts to acquiring CANDIDATE state")
 	n.sem.Acquire(ctx, 1)
@@ -222,8 +224,8 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 
 // ---------------------------------------small unit functions for noleader -------------------------------------
 // noleader-WORKER-2 aside from the apply worker-1
-// this worker is used to handle client commands
-// which can be run independently of the main logic
+// this worker is forever looping to handle client commands, should be called in a separate goroutine
+// quits on the context done, and set the waitGroup before return
 // maki: the tricky part is that the client command needs NOT to be drained but the apply signal needs to be drained
 func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWaitGroup *sync.WaitGroup) {
 	defer workerWaitGroup.Done()
@@ -239,8 +241,9 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 				return
 			case cmd := <-n.leaderApplyCh:
 				n.logger.Warn("client-command-worker, received client command")
-				// easy trivial work, can be done in parallel with the main logic
-				// feature: add delegation to the leader
+				// todo: add delegation to the leader
+
+				// easy trivial work, can be done in parallel with the main logic, in case this dirty messages interfere with the main logicj
 				cmd.RespChan <- &utils.RPCRespWrapper[*rpc.ClientCommandResponse]{
 					Resp: &rpc.ClientCommandResponse{
 						Result: nil,
@@ -332,6 +335,8 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 // if votes received from majority of servers: become leader
 // if AppendEntries RPC received from new leader: convert to follower
 // if election timeout elapses: start new election
+// error handling:
+// This function closes the channel when there is and error, and should be returned
 func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
