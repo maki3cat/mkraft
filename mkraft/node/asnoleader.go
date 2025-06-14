@@ -333,6 +333,8 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 // if votes received from majority of servers: become leader
 // if AppendEntries RPC received from new leader: convert to follower
 // if election timeout elapses: start new election
+// error handling:
+// This function closes the channel when there is and error, and should be returned
 func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)

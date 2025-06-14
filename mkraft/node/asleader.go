@@ -382,7 +382,6 @@ func (n *nodeImpl) recordLeaderState() {
 	}
 }
 
-// todo: shall be refactored with "the safty feature"
 func (n *nodeImpl) getLogsToCatchupForPeers(peerNodeIDs []string) (map[string]log.CatchupLogs, error) {
 	result := make(map[string]log.CatchupLogs)
 	for _, peerNodeID := range peerNodeIDs {
