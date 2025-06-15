@@ -17,6 +17,48 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+// ---------------------------------wrappedUpdateLogsInBatch---------------------------------
+
+func TestNode_wrappedUpdateLogsInBatch_Leader(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+	n.SetNodeState(StateLeader)
+	assert.Panics(t, func() {
+		n.wrappedUpdateLogsInBatch(context.Background(), &rpc.AppendEntriesRequest{
+			PrevLogIndex: 0,
+			PrevLogTerm:  0,
+			Entries:      []*rpc.LogEntry{},
+		})
+	})
+}
+
+func TestNode_wrappedUpdateLogsInBatch_Follower(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+	raftLog := n.raftLog.(*log.MockRaftLogs)
+	raftLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	n.SetNodeState(StateFollower)
+	err := n.wrappedUpdateLogsInBatch(context.Background(), &rpc.AppendEntriesRequest{
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries:      []*rpc.LogEntry{},
+	})
+	assert.NoError(t, err)
+}
+func TestNode_wrappedUpdateLogsInBatch_Candidate(t *testing.T) {
+	n, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+	raftLog := n.raftLog.(*log.MockRaftLogs)
+	raftLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	n.SetNodeState(StateFollower)
+	err := n.wrappedUpdateLogsInBatch(context.Background(), &rpc.AppendEntriesRequest{
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		Entries:      []*rpc.LogEntry{},
+	})
+	assert.NoError(t, err)
+}
+
 // ----------noleaderWorkerForClientCommand------
 func TestNode_noleaderWorkerForClientCommand_ContextCancelled(t *testing.T) {
 	n, ctrl := newMockNode(t)
@@ -62,7 +104,6 @@ func TestNode_noleaderWorkerForClientCommand_HappyPath(t *testing.T) {
 	cancel()
 	wg.Wait()
 }
-
 
 // ---------------------------------asyncSendElection---------------------------------
 
