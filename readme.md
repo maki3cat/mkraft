@@ -20,8 +20,9 @@ This project is a Raft implementation that aims for an almost-industry-level sta
 
 ## The Architecture
 
-<img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
-
+<a href="img/impl_design_v1_original.jpg">
+  <img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
+</a>
 
 ## System Deisgns
 ### Invariants/Properties to hold in any condition
