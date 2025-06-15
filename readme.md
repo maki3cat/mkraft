@@ -59,10 +59,7 @@ What is more up-to-date mean:
 
 ## The Testing 
 
-### (TODO) The Framework
-
-
-### Invariants/Properties Verification
+### Design Invariants/Properties Verification
 
 #### (1) Election Safety 
 In each term change, each node stores a tuple of (timestamp, term, nodeID, the State of Leader/Candidate/Follower),
@@ -86,7 +83,8 @@ We implement an statemachine which will just record ths raft log with index and 
 The use case is after a testing round is done, we run comparing
 the raft logs to check if at any index a different log is applied for the state machine.
 
-### Testing Environment
+### Adversal Environment
 - happy env, no injected errors
 
 ### Engineering, the testing framework/infra
+todo
