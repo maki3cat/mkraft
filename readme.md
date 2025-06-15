@@ -1,5 +1,5 @@
 <!-- [![Test and Coverage](https://github.com/maki3cat/mkraft/actions/workflows/test-coverage.yml/badge.svg?branch=main)](https://github.com/maki3cat/mkraft/actions/workflows/test-coverage.yml) -->
-[![Code Coverage](https://codecov.io/gh/maki3cat/mkraft/branch/main/graph/badge.svg)](https://codecov.io/gh/maki3cat/mkraft)
+[![codecov](https://codecov.io/gh/maki3cat/mkraft/graph/badge.svg?token=CWEUUXSPPL)](https://codecov.io/gh/maki3cat/mkraft)
 
 ## What this Project is About
 This project is a Raft implementation that aims for an almost-industry-level standard while also serving educational purposes by demonstrating how to implement a system paper.
