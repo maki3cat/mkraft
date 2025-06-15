@@ -68,7 +68,7 @@ What is more up-to-date mean:
 In each term change, each node stores a tuple of (timestamp, term, nodeID, the State of Leader/Candidate/Follower),
 and we continuously compare logs of all nodes to check if only one leader is elected;
 
-#### (2) Leader append-only (UT)
+#### (2) Leader append-only (UT-ok)
 By condition checking in method and unit-testing, which means the method to overwrite/delete logs cannot be called
 by a node which is a leader;
 

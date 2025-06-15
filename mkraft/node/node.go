@@ -45,7 +45,6 @@ type TermRank int
 var _ Node = (*nodeImpl)(nil)
 
 type Node interface {
-	// todo: lost requestID and other values in the context
 	VoteRequest(req *utils.RequestVoteInternalReq)
 	AppendEntryRequest(req *utils.AppendEntriesInternalReq)
 	ClientCommand(req *utils.ClientCommandInternalReq)

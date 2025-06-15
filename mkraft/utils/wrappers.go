@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"sync/atomic"
 
 	"github.com/maki3cat/mkraft/rpc"
@@ -14,6 +15,7 @@ type RPCRequestWrapper[T RPCRequest, R RPCResponse] struct {
 	Req       T
 	RespChan  chan *RPCRespWrapper[R]
 	IsTimeout atomic.Bool
+	Ctx       context.Context
 }
 
 type RPCRespWrapper[T RPCResponse] struct {

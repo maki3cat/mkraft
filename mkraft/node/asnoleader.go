@@ -331,7 +331,7 @@ func (n *nodeImpl) wrappedUpdateLogsInBatch(ctx context.Context, req *rpc.Append
 	}
 	logs := make([][]byte, len(req.Entries))
 	for idx, entry := range req.Entries {
-		logs[idx] = entry.Data // todo: check if this is correct
+		logs[idx] = entry.Data
 	}
 	return n.raftLog.UpdateLogsInBatch(ctx, req.PrevLogIndex, logs, req.Term)
 }
