@@ -27,7 +27,6 @@ func TestNode_grantVote_basicsRules(t *testing.T) {
 		granted := n.grantVote(10, 0, 0, n.NodeId)
 		assert.False(t, granted)
 	})
-
 	t.Run("test case 2: current term is same with the new term, and voteFor is the candidate", func(t *testing.T) {
 		n.CurrentTerm = 0
 		n.VotedFor = "node2"
@@ -85,6 +84,7 @@ func TestNode_recordLeaderState(t *testing.T) {
 
 	n.NodeId = "test-node-1"
 	n.state = StateLeader
+	n.CurrentTerm = 5
 
 	n.recordNodeState()
 
@@ -95,6 +95,7 @@ func TestNode_recordLeaderState(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, string(data), n.NodeId)
 	assert.Contains(t, string(data), StateLeader.String())
+	assert.Contains(t, string(data), "5#") // Verify term is included
 }
 
 // ---------------------------------handleVoteRequest---------------------------------
@@ -279,5 +280,62 @@ func TestNode_ClientCommand(t *testing.T) {
 		default:
 			t.Error("No error response received")
 		}
+	})
+}
+
+// ---------------------------------deserializeNodeStateEntry---------------------------------
+func TestNode_deserializeNodeStateEntry(t *testing.T) {
+	t.Run("valid leader entry", func(t *testing.T) {
+		entry := "5#2025-06-15T12:00:00Z#test-node-1#leader"
+		term, nodeId, state, err := DeserializeNodeStateEntry(entry)
+		assert.NoError(t, err)
+		assert.Equal(t, uint32(5), term)
+		assert.Equal(t, "test-node-1", nodeId)
+		assert.Equal(t, StateLeader, state)
+	})
+
+	t.Run("valid candidate entry", func(t *testing.T) {
+		entry := "3#2025-06-15T12:00:00Z#test-node-2#candidate"
+		term, nodeId, state, err := DeserializeNodeStateEntry(entry)
+		assert.NoError(t, err)
+		assert.Equal(t, uint32(3), term)
+		assert.Equal(t, "test-node-2", nodeId)
+		assert.Equal(t, StateCandidate, state)
+	})
+
+	t.Run("valid follower entry", func(t *testing.T) {
+		entry := "1#2025-06-15T12:00:00Z#test-node-3#follower"
+		term, nodeId, state, err := DeserializeNodeStateEntry(entry)
+		assert.NoError(t, err)
+		assert.Equal(t, uint32(1), term)
+		assert.Equal(t, "test-node-3", nodeId)
+		assert.Equal(t, StateFollower, state)
+	})
+
+	t.Run("invalid number of parts", func(t *testing.T) {
+		entry := "5#2025-06-15T12:00:00Z#test-node-1" // Missing state
+		term, nodeId, state, err := DeserializeNodeStateEntry(entry)
+		assert.Equal(t, common.ErrCorruptLine, err)
+		assert.Equal(t, uint32(0), term)
+		assert.Equal(t, "", nodeId)
+		assert.Equal(t, StateFollower, state)
+	})
+
+	t.Run("invalid term number", func(t *testing.T) {
+		entry := "invalid#2025-06-15T12:00:00Z#test-node-1#leader"
+		term, nodeId, state, err := DeserializeNodeStateEntry(entry)
+		assert.Equal(t, common.ErrCorruptLine, err)
+		assert.Equal(t, uint32(0), term)
+		assert.Equal(t, "", nodeId)
+		assert.Equal(t, StateFollower, state)
+	})
+
+	t.Run("invalid state value", func(t *testing.T) {
+		entry := "5#2025-06-15T12:00:00Z#test-node-1#invalid"
+		term, nodeId, state, err := DeserializeNodeStateEntry(entry)
+		assert.NoError(t, err)
+		assert.Equal(t, uint32(5), term)
+		assert.Equal(t, "test-node-1", nodeId)
+		assert.Equal(t, StateFollower, state)
 	})
 }

@@ -23,3 +23,6 @@ var ErrCorruptPersistentFile = errors.New("corrupt persistent file")
 var ErrDeadlineNotSet = errors.New("deadline not set")
 var ErrContextDone = errors.New("context done")
 var ErrDeadlineInThePast = errors.New("deadline in the past")
+
+// corrupt data
+var ErrCorruptLine = errors.New("corrupt line")
