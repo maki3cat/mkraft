@@ -27,7 +27,6 @@ func TestNode_grantVote_basicsRules(t *testing.T) {
 		granted := n.grantVote(10, 0, 0, n.NodeId)
 		assert.False(t, granted)
 	})
-
 	t.Run("test case 2: current term is same with the new term, and voteFor is the candidate", func(t *testing.T) {
 		n.CurrentTerm = 0
 		n.VotedFor = "node2"
@@ -85,6 +84,7 @@ func TestNode_recordLeaderState(t *testing.T) {
 
 	n.NodeId = "test-node-1"
 	n.state = StateLeader
+	n.CurrentTerm = 5
 
 	n.recordNodeState()
 
@@ -95,6 +95,7 @@ func TestNode_recordLeaderState(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, string(data), n.NodeId)
 	assert.Contains(t, string(data), StateLeader.String())
+	assert.Contains(t, string(data), "5#") // Verify term is included
 }
 
 // ---------------------------------handleVoteRequest---------------------------------

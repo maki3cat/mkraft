@@ -302,7 +302,8 @@ func (n *nodeImpl) recordNodeState() {
 	}
 
 	currentTime := time.Now().Format(time.RFC3339)
-	entry := fmt.Sprintf("%s#%s#%s\n", currentTime, n.NodeId, n.state)
+	term, state := n.getCurrentTerm(), n.GetNodeState()
+	entry := fmt.Sprintf("%d#%s#%s#%s\n", term, currentTime, n.NodeId, state)
 
 	_, writeErr := file.WriteString(entry)
 	if writeErr != nil {
