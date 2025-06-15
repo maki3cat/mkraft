@@ -1,18 +1,17 @@
 [![Test and Coverage](https://github.com/maki3cat/mkraft/actions/workflows/test-coverage.yml/badge.svg?branch=main)](https://github.com/maki3cat/mkraft/actions/workflows/test-coverage.yml)
 
 ## What this Project is About
+This project is a Raft implementation that aims for an almost-industry-level standard while also serving educational purposes by demonstrating how to implement a system paper.
 
-This project/repo is:
+- "Industry-level": This refers to its focus on clean, maintainable code, performance-oriented designs, and sophisticated testing for rigorous proof. (The term "extreme engineering" is indeed subjective and can be omitted for clarity, as your points already define "industry-level" well).
+- "Almost": This qualification is due to the fact that the implementation has not yet been deployed or proven in a real-world industry setting.
+- "Educational": Its educational purpose is fulfilled by mapping the implementation directly to the paper's design, while also highlighting the gaps and trade-offs between the theoretical model and practical implementation decisions. 
 
-- an almost-industry level implementation of Raft that helps students to learn implementation of system paper with the example of Raft;
-(but it may be a bad idea to write in Golang since universities don't teach Golang)
-- provide a pluggable storage server that is fault-tolerant in the face of async network (i.e. unbounded network delay and clock drifting);
-- an exploration of testing thoroughly and solidly for a system project; the guarantee of a complex system-project is very hard;
 
 <img src="img/logo.jpg" alt="My Image" align="right" width="250">
 
 
-## Versions and Features
+## Versions
 
 <b> v0.2.0-alpha </b>
 - $5.2 Leader Election
@@ -27,23 +26,23 @@ This project/repo is:
 ## System Deisgns
 ### Invariants/Properties to hold in any condition
 
-(1) Election Safety:
+1. Election Safety:
 at most one leader can be elected at a given term; ($5.2)
 
-(2) Leader Append-only: ($5.3)
+2. Leader Append-only: ($5.3)
     - a leader never deletes OR overwrites its log entries;
     - it only appends new log entries;
 
-(3) Log Matching: ($5.3)
+3. Log Matching: ($5.3)
 if two logs contain an entry with the same index + same term, 
 all logs are identical in all entries through the given index;
 
-(4) Leader Completeness: ($5.4)
+4. Leader Completeness: ($5.4)
 IF a log entry is commited in a given term,
 then that entry will be present in the logs of the LEADERS for all higher-numbered terms;
 (The leader has all pre-committed logs. The log entries only flow from leader to followers.)
 
-(5) State Machine Safety: ($5.4)
+5. State Machine Safety: ($5.4)
 if a server has applied a log entry at a given index to the state machine, 
 no other server will ever apply a different log entry for the same index; 
 
