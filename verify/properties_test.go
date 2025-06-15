@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/maki3cat/mkraft/common"
+	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -66,5 +67,141 @@ func TestVerifyLeaderSafety(t *testing.T) {
 		result, err := verifyLeaderSafety(nodeToStateFiles)
 		assert.NoError(t, err)
 		assert.True(t, result)
+	})
+}
+
+// -------------------property of log mathcing-------------------
+func TestVerifyLogMatching(t *testing.T) {
+	t.Run("matching logs", func(t *testing.T) {
+		nodeToLogs := map[string][]*log.RaftLogEntry{
+			"node1": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+			"node2": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+			"node3": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+		}
+		result, err := VerifyLogMatching(nodeToLogs)
+		assert.NoError(t, err)
+		assert.True(t, result)
+	})
+
+	t.Run("different log lengths", func(t *testing.T) {
+		nodeToLogs := map[string][]*log.RaftLogEntry{
+			"node1": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+			"node2": {
+				{Term: 1, Commands: []byte("cmd1")},
+			},
+			"node3": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+		}
+		_, err := VerifyLogMatching(nodeToLogs)
+		assert.Error(t, err)
+	})
+
+	t.Run("different terms", func(t *testing.T) {
+		nodeToLogs := map[string][]*log.RaftLogEntry{
+			"node1": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+			"node2": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 3, Commands: []byte("cmd2")}, // Different term
+			},
+			"node3": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+		}
+		result, err := VerifyLogMatching(nodeToLogs)
+		assert.NoError(t, err)
+		assert.True(t, result)
+	})
+
+	t.Run("different last commands", func(t *testing.T) {
+		nodeToLogs := map[string][]*log.RaftLogEntry{
+			"node1": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+			"node2": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("different")}, // Different command
+			},
+			"node3": {
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("different")}, // Different command
+			},
+		}
+		result, err := VerifyLogMatching(nodeToLogs)
+		assert.NoError(t, err)
+		assert.True(t, result)
+	})
+
+	t.Run("different in the middle commands", func(t *testing.T) {
+		nodeToLogs := map[string][]*log.RaftLogEntry{
+			"node1": {
+				{Term: 1, Commands: []byte("cmd0")},
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 1, Commands: []byte("cmd2")},
+			},
+			"node2": {
+				{Term: 1, Commands: []byte("cmd0")},
+				{Term: 1, Commands: []byte("different")}, // Different command
+				{Term: 1, Commands: []byte("cmd2")},
+			},
+			"node3": {
+				{Term: 1, Commands: []byte("cmd0")},
+				{Term: 1, Commands: []byte("different")}, // Different command
+				{Term: 1, Commands: []byte("cmd2")},
+			},
+		}
+		result, err := VerifyLogMatching(nodeToLogs)
+		assert.NoError(t, err)
+		assert.False(t, result)
+	})
+
+	t.Run("multiple discrepancies in logs", func(t *testing.T) {
+		nodeToLogs := map[string][]*log.RaftLogEntry{
+			"node1": {
+				{Term: 1, Commands: []byte("cmd0")},
+				{Term: 1, Commands: []byte("cmd1")},
+				{Term: 2, Commands: []byte("cmd2")},
+			},
+			"node2": {
+				{Term: 1, Commands: []byte("cmd0")},
+				{Term: 1, Commands: []byte("different")}, // Different command
+				{Term: 1, Commands: []byte("cmd2")},
+			},
+			"node3": {
+				{Term: 1, Commands: []byte("cmd0")},
+				{Term: 1, Commands: []byte("different")}, // Different command
+				{Term: 1, Commands: []byte("cmd2")},
+			},
+		}
+		result, err := VerifyLogMatching(nodeToLogs)
+		assert.NoError(t, err)
+		assert.True(t, result)
+	})
+
+	t.Run("empty logs", func(t *testing.T) {
+		nodeToLogs := map[string][]*log.RaftLogEntry{
+			"node1": {},
+			"node2": {},
+		}
+		_, err := VerifyLogMatching(nodeToLogs)
+		assert.Error(t, err)
 	})
 }

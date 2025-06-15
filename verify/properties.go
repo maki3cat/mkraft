@@ -5,11 +5,14 @@ import (
 	"os"
 	"strings"
 
+	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/mkraft/node"
 	"go.uber.org/zap"
 )
 
 var logger, _ = zap.NewDevelopment()
+
+// -------------------property of leader election safety-------------------
 
 func VerifyLeaderSafetyFromFiles(nodeToStateFilePath map[string]string) (bool, error) {
 	nodeToStateEntries := make(map[string]string)
@@ -55,6 +58,52 @@ func verifyLeaderSafety(nodeToStateEntries map[string]string) (bool, error) {
 	for term, states := range termToStates {
 		if len(states[node.StateLeader]) != 1 {
 			fmt.Println("term", term, "has", len(states[node.StateLeader]), "leaders")
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// -------------------property of log mathcing-------------------
+// suppose with log compaction, the logs are sure to be in the memory altogether
+func VerifyLogMatching(nodeToStateEntries map[string][]*log.RaftLogEntry) (bool, error) {
+	size := 0
+	for nodeId, logs := range nodeToStateEntries {
+		if size == 0 {
+			size = len(logs)
+		} else if size != len(logs) {
+			return false, fmt.Errorf("node %s has %d logs, but expected %d", nodeId, len(logs), size)
+		}
+	}
+	if size == 0 {
+		return false, fmt.Errorf("no logs")
+	}
+
+	earliestDiscrepancyIdx := -1
+	for i := range size {
+		entries := make([]*log.RaftLogEntry, 0)
+		for _, logs := range nodeToStateEntries {
+			entries = append(entries, logs[i])
+		}
+		// check if all term of the entries are the same
+		termEqual := true
+		dataEqual := true
+		term := entries[0].Term
+		data := entries[0].Commands
+		for _, entry := range entries {
+			if entry.Term != term {
+				termEqual = false
+				break
+			}
+			if string(entry.Commands) != string(data) {
+				dataEqual = false
+				break
+			}
+		}
+		if !(termEqual && dataEqual) {
+			earliestDiscrepancyIdx = i
+		}
+		if termEqual && dataEqual && earliestDiscrepancyIdx != -1 {
 			return false, nil
 		}
 	}

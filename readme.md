@@ -61,7 +61,7 @@ What is more up-to-date mean:
 
 ### Design Invariants/Properties Verification
 
-#### (1) Election Safety 
+#### (1) Election Safety (VerificationScript-ok)
 In each term change, each node stores a tuple of (timestamp, term, nodeID, the State of Leader/Candidate/Follower),
 and we continuously compare logs of all nodes to check if only one leader is elected;
 
