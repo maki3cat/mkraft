@@ -72,8 +72,8 @@ by a node which is a leader;
 #### (3) Log Matching
 We compare the tuples of (index, term and log) of all nodes to check if this is matched.
 
-#### (4) Leader Completeness (UT)
-This one is a bit hard to verify, but this property is guaranteed by Log Matching and Vote Restriction,
+#### (4) Leader Completeness (UT-ok)
+This one is a bit hard to verify directly, but this property is guaranteed by Log Matching and Vote Restriction,
 so we check this property by checking the 2 property/restriction indirectly.
 For the voting restriction, we validate it by unit-testing to guarantee the vote cannot be true if the restriction is broken.
 (marked with invariant)
@@ -88,3 +88,8 @@ the raft logs to check if at any index a different log is applied for the state 
 
 ### Engineering, the testing framework/infra
 todo
+
+
+## Resilience of Engineerings 
+
+1) How the errors are managed?

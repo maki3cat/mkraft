@@ -255,18 +255,22 @@ func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, n
 	defer n.stateRWLock.RUnlock()
 
 	currentTerm, voteFor := n.CurrentTerm, n.VotedFor
+
 	if currentTerm < newTerm {
 		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
-		if candidateLastLogTerm >= lastLogTerm && candidateLastLogIdx >= lastLogIdx {
+		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
 			err := n.storeCurrentTermAndVotedFor(newTerm, candidateId, true)
 			if err != nil {
 				n.logger.Error("error in storeCurrentTermAndVotedFor", zap.Error(err))
 				panic(err)
 			}
 			return true
+		} else {
+			return false
 		}
 	}
-	if currentTerm == newTerm && (voteFor == "" || voteFor == candidateId) {
+	// empty voteFor should not be granted, because it may be learned from the new leader without voting for it
+	if currentTerm == newTerm && voteFor == candidateId {
 		return true
 	}
 	return false
@@ -274,10 +278,10 @@ func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, n
 
 func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVoteResponse {
 	voteGranted := n.grantVote(req.LastLogIndex, req.LastLogTerm, req.Term, req.CandidateId)
-	// implementation gap: I think there is no need to differentiate the updated currentTerm or the previous currentTerm
 	currentTerm := n.getCurrentTerm()
 	return &rpc.RequestVoteResponse{
-		Term:        currentTerm,
+		Term: currentTerm,
+		// implementation gap: I think there is no need to differentiate the updated currentTerm or the previous currentTerm
 		VoteGranted: voteGranted,
 	}
 }
