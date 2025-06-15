@@ -17,6 +17,7 @@ var ErrMajorityNotMet = errors.New("majority not met")
 
 // invariants broken -> should be panic which means the system has serious bugs
 var ErrInvariantsBroken = errors.New("invariants broken")
+var ErrCorruptPersistentFile = errors.New("corrupt persistent file")
 
 // context related
 var ErrDeadlineNotSet = errors.New("deadline not set")

@@ -2,7 +2,7 @@ package node
 
 import (
 	"context"
-	"os"
+	"errors"
 	"sync"
 	"time"
 
@@ -12,6 +12,8 @@ import (
 	"github.com/maki3cat/mkraft/rpc"
 	"go.uber.org/zap"
 )
+
+// ---------------------------------------CONTROL FLOW: THE LEADER-------------------------------------
 
 /*
 SECTION1: THE COMMON RULE (paper)
@@ -67,8 +69,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	n.logger.Info("acquired the Semaphore as the LEADER state")
 	defer n.sem.Release(1)
 
-	// debugging
-	n.recordLeaderState()
+	go n.recordNodeState() // trivial-path
 
 	// maki: this is a tricky design (the whole design of the log/client command application is tricky)
 	// todo: catch up the log application to make sure lastApplied == commitIndex for the leader
@@ -107,9 +108,8 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 				tickerForHeartbeat.Reset(heartbeatDuration)
 				singleJobResult, err = n.syncDoHeartbeat(ctx)
 				if err != nil {
-					n.logger.Error("error in sending heartbeat, omit it and continue", zap.Error(err))
+					n.logger.Error("error in sending heartbeat, omit it for next retry", zap.Error(err))
 				}
-
 			// task2: handle the client command, need to change raftlog/state machine -> as leader, may degrade to follower
 			case clientCmd := <-n.clientCommandCh:
 				tickerForHeartbeat.Reset(heartbeatDuration)
@@ -151,7 +151,8 @@ type JobResult struct {
 	VotedFor string
 }
 
-// @return: shall degrade to follower or not
+// @return: shall degrade to follower or not,
+// @return: if err is not nil, the caller shall retry
 func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	currentTerm := n.getCurrentTerm()
@@ -183,22 +184,30 @@ func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 
 	ctxTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetRPCRequestTimeout())
 	defer cancel()
+
+	// the handling of success/failure is not aligned with the consensus method
 	resp, err := n.consensus.ConsensusAppendEntries(ctxTimeout, reqs, n.CurrentTerm)
 	if err != nil {
 		n.logger.Error("error in sending append entries to one node", zap.Error(err))
 		return JobResult{ShallDegrade: false}, err
 	}
 
+	// shouldn't have this case, fatal error -> it won't happen
+	if resp.Term > currentTerm && resp.Success {
+		panic("should not happen, break the property of Election Safety")
+	}
+
 	if resp.Success {
 		n.logger.Info("append entries success", zap.String("requestID", requestID))
 		return JobResult{ShallDegrade: false}, nil
 	} else {
+		// another failed reason is the prelog is not correct
 		if resp.Term > currentTerm {
 			n.logger.Warn("peer's term is greater than current term", zap.String("requestID", requestID))
 			return JobResult{ShallDegrade: true, Term: TermRank(resp.Term)}, nil
 		} else {
-			// todo: the unsafe panic is temporarily used for debugging
-			panic("failed append entries, but without not a higher term, should not happen")
+			// should retry: may be from the network error and the majority failed
+			return JobResult{ShallDegrade: false}, errors.New("append entries failed, shall retry")
 		}
 	}
 }
@@ -352,30 +361,10 @@ func (n *nodeImpl) handleRequestVoteAsLeader(internalReq *utils.RequestVoteInter
 	}
 }
 
-func (n *nodeImpl) recordLeaderState() {
-	stateFilePath := "leader.tmp"
-	file, err := os.OpenFile(stateFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		n.logger.Error("failed to open state file", zap.Error(err))
-		panic(err)
-	}
-	defer file.Close()
-
-	currentTime := time.Now().Format(time.RFC3339)
-	entry := currentTime + " " + n.NodeId + "\n"
-
-	_, writeErr := file.WriteString(entry)
-	if writeErr != nil {
-		n.logger.Error("failed to append NodeID to state file", zap.Error(writeErr))
-		panic(writeErr)
-	}
-}
-
-// todo: shall be refactored with "the safty feature"
 func (n *nodeImpl) getLogsToCatchupForPeers(peerNodeIDs []string) (map[string]log.CatchupLogs, error) {
+	// todo: can be batch reading
 	result := make(map[string]log.CatchupLogs)
 	for _, peerNodeID := range peerNodeIDs {
-		// todo: can be batch reading
 		nextID := n.getPeersNextIndex(peerNodeID)
 		logs, err := n.raftLog.ReadLogsInBatchFromIdx(nextID)
 		if err != nil {
