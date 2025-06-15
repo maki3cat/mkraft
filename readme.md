@@ -20,8 +20,9 @@ This project is a Raft implementation that aims for an almost-industry-level sta
 
 ## The Architecture
 
-<img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
-
+<a href="img/impl_design_v1_original.jpg">
+  <img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
+</a>
 
 ## System Deisgns
 ### Invariants/Properties to hold in any condition
@@ -58,24 +59,21 @@ What is more up-to-date mean:
 
 ## The Testing 
 
-### (TODO) The Framework
-
-
-### Invariants/Properties Verification
+### Design Invariants/Properties Verification
 
 #### (1) Election Safety 
 In each term change, each node stores a tuple of (timestamp, term, nodeID, the State of Leader/Candidate/Follower),
 and we continuously compare logs of all nodes to check if only one leader is elected;
 
-#### (2) Leader append-only (UT)
+#### (2) Leader append-only (UT-ok)
 By condition checking in method and unit-testing, which means the method to overwrite/delete logs cannot be called
 by a node which is a leader;
 
 #### (3) Log Matching
 We compare the tuples of (index, term and log) of all nodes to check if this is matched.
 
-#### (4) Leader Completeness (UT)
-This one is a bit hard to verify, but this property is guaranteed by Log Matching and Vote Restriction,
+#### (4) Leader Completeness (UT-ok)
+This one is a bit hard to verify directly, but this property is guaranteed by Log Matching and Vote Restriction,
 so we check this property by checking the 2 property/restriction indirectly.
 For the voting restriction, we validate it by unit-testing to guarantee the vote cannot be true if the restriction is broken.
 (marked with invariant)
@@ -85,7 +83,13 @@ We implement an statemachine which will just record ths raft log with index and 
 The use case is after a testing round is done, we run comparing
 the raft logs to check if at any index a different log is applied for the state machine.
 
-### Testing Environment
+### Adversal Environment
 - happy env, no injected errors
 
 ### Engineering, the testing framework/infra
+todo
+
+
+## Resilience of Engineerings 
+
+1) How the errors are managed?

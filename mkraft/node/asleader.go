@@ -117,7 +117,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
 				clientCommands = append(clientCommands, clientCmd)
 				// todo: filter out all the timeout requests
-				singleJobResult, err = n.syncDoLogReplication(ctx, clientCommands)
+				singleJobResult, err = n.syncDoLogReplication(clientCmd.Ctx, clientCommands)
 				if err != nil {
 					// todo: as is same with most other panics, temporary solution, shall handle the error properly
 					panic(err)

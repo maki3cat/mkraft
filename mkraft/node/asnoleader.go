@@ -299,13 +299,7 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 
 	// 3. append logs
 	if len(req.Entries) > 0 {
-		// todo: what if the prevLogIndex is not the last log index?
-		// todo: I haven't checked it?
-		logs := make([][]byte, len(req.Entries))
-		for idx, entry := range req.Entries {
-			logs[idx] = entry.Data
-		}
-		err := n.raftLog.UpdateLogsInBatch(ctx, req.PrevLogIndex, logs, req.Term)
+		err := n.wrappedUpdateLogsInBatch(ctx, req)
 		if err != nil {
 			if err == common.ErrPreLogNotMatch {
 				response = rpc.AppendEntriesResponse{
@@ -314,6 +308,8 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 				}
 				return &response
 			}
+
+			// todo: replace panic with returning error to the caller
 			// this error cannot be not match,
 			// because the prevLogIndex and prevLogTerm has been checked
 			n.logger.Error("error in UpdateLogsInBatch", zap.Error(err))
@@ -326,6 +322,18 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 		Success: true,
 	}
 	return &response
+}
+
+// Property: Leader Append-only
+func (n *nodeImpl) wrappedUpdateLogsInBatch(ctx context.Context, req *rpc.AppendEntriesRequest) error {
+	if n.GetNodeState() == StateLeader {
+		panic("violation of Leader Append-only property: leader cannot call UpdateLogsInBatch")
+	}
+	logs := make([][]byte, len(req.Entries))
+	for idx, entry := range req.Entries {
+		logs[idx] = entry.Data
+	}
+	return n.raftLog.UpdateLogsInBatch(ctx, req.PrevLogIndex, logs, req.Term)
 }
 
 // Specifical Rule for Candidate Election:
