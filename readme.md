@@ -11,7 +11,18 @@ This project is a Raft implementation that aims for an almost-industry-level sta
 <img src="img/logo.jpg" alt="My Image" align="right" width="250">
 
 
-## Versions
+## News
+
+What I am currently working on Testing
+- build a local-CICD for the purpose of integrated/performance testing (docker-compose/mini-kube probably)
+- study fuzzy testing, and other testing techniques
+- refine error management of this project
+
+Backlog after current phase
+- Log Compaction
+- Dynamic Membership
+- Educational Highlights
+
 
 <b> v0.2.0-alpha </b>
 - $5.2 Leader Election
