@@ -1,4 +1,8 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
 name: Test and Coverage
+
 on:
   push:
     branches: ["main"]
@@ -10,52 +14,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5 # Updated to v5 for latest Go versions compatibility
+      - uses: actions/setup-go@v4
         with:
           go-version: "1.24"
       - run: go build -v ./...
-      - run: go test -v ./... -coverprofile=coverage.out -covermode=atomic # Added -covermode=atomic for more accurate coverage
-      
-      # Upload coverage results as an artifact (already good)
-      - name: Upload coverage results artifact
+      - run: go test -v ./... -coverprofile=coverage.out
+      - name: Upload coverage results
         uses: actions/upload-artifact@v4
         with:
           name: code-coverage
           path: coverage.out
 
-      # --- NEW STEP FOR CODECOV ---
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4 # Using v4 for stability; check Codecov for the absolute latest
-        with:
-          files: ./coverage.out # Path to your coverage report
-          # token: ${{ secrets.CODECOV_TOKEN }} # Usually not needed for public repos; uncomment for private repos
-          verbose: true # Optional: enable verbose logging for debugging
-          # If you want the badge to report 'main' branch coverage correctly, ensure the default branch is set in Codecov UI
-          # or explicitly specify the branch if needed: branch: ${{ github.ref_name }}
-
-
-  coverage-report: # This job is for generating a PR comment/report using fgrosse/go-coverage-report
+  coverage-report:
     needs: build-and-test
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write # Required for writing comments to PRs
-      contents: write # Required if the action modifies files (e.g., updates a badge, which this one doesn't directly for the README)
+      pull-requests: write
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      
+  
       # Download the coverage artifact from the current build
-      - name: Download coverage artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: code-coverage
           path: .
-      
-      # Generate the coverage report as a PR comment
-      - name: Generate coverage report comment
-        if: github.event_name == 'pull_request' # Only run this for PRs
+    
+      # Generate the coverage report
+      - name: Generate coverage report
+        if: github.event_name == 'pull_request'
         uses: fgrosse/go-coverage-report@v1.2.0
         with:
           coverage-file-name: coverage.out
-          # The 'report-only' flag makes it suitable for comments on PRs
-          # It prevents pushing a branch with the coverage report HTML if you only want the comment.
-          report-only: true # Always true when used on pull_request type events as per your original intent
+          report-only: ${{ github.event_name != 'push' }}
