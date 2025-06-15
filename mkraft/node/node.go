@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/maki3cat/mkraft/common"
@@ -14,7 +13,6 @@ import (
 	"github.com/maki3cat/mkraft/mkraft/plugs"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
-	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
 )
@@ -192,7 +190,6 @@ func (n *nodeImpl) GracefulStop() {
 	// (3) others defer functions are suitable and enough for the graceful stop as different states?
 }
 
-// todo: reconstruction of the requets-receiving apis,
 // 1) wrap context in; 2) add the return default to reject using the leakage bucket
 func (n *nodeImpl) VoteRequest(req *utils.RequestVoteInternalReq) {
 	select {
@@ -311,23 +308,4 @@ func (n *nodeImpl) recordNodeState() {
 	if writeErr != nil {
 		n.logger.Error("failed to append NodeID to recordNodeState file, we continue to run", zap.Error(writeErr))
 	}
-}
-
-// ---------------------------------recordLeaderState---------------------------------
-func TestNode_recordLeaderState(t *testing.T) {
-	n, ctrl := newMockNode(t)
-	defer cleanUpTmpDir(ctrl)
-
-	n.NodeId = "test-node-1"
-	n.state = StateLeader
-
-	n.recordNodeState()
-
-	// Verify file exists and contains node ID
-	filePath := getLeaderStateFilePath(n.NodeId, n.cfg.GetDataDir())
-	data, err := os.ReadFile(filePath)
-	fmt.Println(string(data))
-	assert.NoError(t, err)
-	assert.Contains(t, string(data), n.NodeId)
-	assert.Contains(t, string(data), StateLeader.String())
 }
