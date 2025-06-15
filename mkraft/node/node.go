@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -301,12 +303,41 @@ func (n *nodeImpl) recordNodeState() {
 		defer file.Close()
 	}
 
-	currentTime := time.Now().Format(time.RFC3339)
 	term, state := n.getCurrentTerm(), n.GetNodeState()
-	entry := fmt.Sprintf("%d#%s#%s#%s\n", term, currentTime, n.NodeId, state)
+	entry := serializeNodeStateEntry(term, n.NodeId, state)
 
 	_, writeErr := file.WriteString(entry)
 	if writeErr != nil {
 		n.logger.Error("failed to append NodeID to recordNodeState file, we continue to run", zap.Error(writeErr))
 	}
+}
+func serializeNodeStateEntry(term uint32, nodeId string, state NodeState) string {
+	currentTime := time.Now().Format(time.RFC3339)
+	return fmt.Sprintf("%d#%s#%s#%s\n", term, currentTime, nodeId, state)
+}
+
+func DeserializeNodeStateEntry(entry string) (uint32, string, NodeState, error) {
+	parts := strings.Split(strings.TrimSpace(entry), "#")
+	if len(parts) != 4 {
+		return 0, "", StateFollower, common.ErrCorruptLine
+	}
+
+	term, err := strconv.ParseUint(parts[0], 10, 32)
+	if err != nil {
+		return 0, "", StateFollower, common.ErrCorruptLine
+	}
+
+	nodeId := parts[2]
+
+	var state NodeState
+	switch parts[3] {
+	case "leader":
+		state = StateLeader
+	case "candidate":
+		state = StateCandidate
+	default:
+		state = StateFollower
+	}
+
+	return uint32(term), nodeId, state, nil
 }
