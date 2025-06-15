@@ -70,16 +70,16 @@ func (mr *MockStateMachineMockRecorder) BatchApplyCommand(ctx, commandList any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchApplyCommand", reflect.TypeOf((*MockStateMachine)(nil).BatchApplyCommand), ctx, commandList)
 }
 
-// GetLatestAppliedIndex mocks base method.
-func (m *MockStateMachine) GetLatestAppliedIndex() uint64 {
+// Close mocks base method.
+func (m *MockStateMachine) Close() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLatestAppliedIndex")
-	ret0, _ := ret[0].(uint64)
+	ret := m.ctrl.Call(m, "Close")
+	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// GetLatestAppliedIndex indicates an expected call of GetLatestAppliedIndex.
-func (mr *MockStateMachineMockRecorder) GetLatestAppliedIndex() *gomock.Call {
+// Close indicates an expected call of Close.
+func (mr *MockStateMachineMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestAppliedIndex", reflect.TypeOf((*MockStateMachine)(nil).GetLatestAppliedIndex))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockStateMachine)(nil).Close))
 }

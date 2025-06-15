@@ -11,7 +11,18 @@ This project is a Raft implementation that aims for an almost-industry-level sta
 <img src="img/logo.jpg" alt="My Image" align="right" width="250">
 
 
-## Versions
+## News
+
+What I am currently working on Testing
+- build a local-CICD for the purpose of integrated/performance testing (docker-compose/mini-kube probably)
+- study fuzzy testing, and other testing techniques
+- refine error management of this project
+
+Backlog after current phase
+- Log Compaction
+- Dynamic Membership
+- Educational Highlights
+
 
 <b> v0.2.0-alpha </b>
 - $5.2 Leader Election
@@ -61,18 +72,18 @@ What is more up-to-date mean:
 
 ### Design Invariants/Properties Verification
 
-#### (1) Election Safety (VerificationScript-ok)
+#### (1) Election Safety (VerificationScript-Covered)
 In each term change, each node stores a tuple of (timestamp, term, nodeID, the State of Leader/Candidate/Follower),
 and we continuously compare logs of all nodes to check if only one leader is elected;
 
-#### (2) Leader append-only (UT-ok)
+#### (2) Leader append-only (UT-Covered)
 By condition checking in method and unit-testing, which means the method to overwrite/delete logs cannot be called
 by a node which is a leader;
 
-#### (3) Log Matching
+#### (3) Log Matching (VerificationScript-Covered)
 We compare the tuples of (index, term and log) of all nodes to check if this is matched.
 
-#### (4) Leader Completeness (UT-ok)
+#### (4) Leader Completeness (UT-Covered)
 This one is a bit hard to verify directly, but this property is guaranteed by Log Matching and Vote Restriction,
 so we check this property by checking the 2 property/restriction indirectly.
 For the voting restriction, we validate it by unit-testing to guarantee the vote cannot be true if the restriction is broken.
