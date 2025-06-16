@@ -116,6 +116,11 @@ func VerifyLogMatching(nodeToStateEntries map[string][]*log.RaftLogEntry) (bool,
 func VerifyStateMachineSafety(nodeToStateMachineData [][]string) (bool, error) {
 	nodeCount := len(nodeToStateMachineData)
 	lineCount := len(nodeToStateMachineData[0])
+	for _, data := range nodeToStateMachineData {
+		if len(data) != lineCount {
+			return false, fmt.Errorf("node %s has %d lines, but expected %d", data[0], len(data), lineCount)
+		}
+	}
 	// compare each line of each node's data to see if they are the same
 	for i := range lineCount {
 		for j := range nodeCount {
