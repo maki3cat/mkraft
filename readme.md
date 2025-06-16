@@ -3,7 +3,7 @@
 ## What this Project is About
 This project is a Raft implementation that aims for an almost-industry-level standard while also serving educational purposes by demonstrating how to implement a system paper.
 
-- "Industry-level": This refers to its focus on clean, maintainable code, performance-oriented designs, and sophisticated testing for rigorous proof. (The term "extreme engineering" is indeed subjective and can be omitted for clarity, as your points already define "industry-level" well).
+- "Industry-level": This refers to its focus on clean, maintainable code, performance-oriented designs, and sophisticated testing for rigorous proof.
 - "Almost": This qualification is due to the fact that the implementation has not yet been deployed or proven in a real-world industry setting.
 - "Educational": Its educational purpose is fulfilled by mapping the implementation directly to the paper's design, while also highlighting the gaps and trade-offs between the theoretical model and practical implementation decisions. 
 
