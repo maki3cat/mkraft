@@ -205,3 +205,29 @@ func TestVerifyLogMatching(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+// -------------------property of state machine safety-------------------
+func TestVerifyStateMachineSafety(t *testing.T) {
+	t.Run("all nodes have same state machine data", func(t *testing.T) {
+		nodeToStateMachineData := [][]string{
+			{"cmd1", "cmd2", "cmd3"},
+			{"cmd1", "cmd2", "cmd3"},
+			{"cmd1", "cmd2", "cmd3"},
+		}
+		result, err := VerifyStateMachineSafety(nodeToStateMachineData)
+		assert.NoError(t, err)
+		assert.True(t, result)
+	})
+
+	t.Run("nodes have different state machine data", func(t *testing.T) {
+		nodeToStateMachineData := [][]string{
+			{"cmd1", "cmd2", "cmd3"},
+			{"cmd1", "different", "cmd3"}, // Node 2 has different data
+			{"cmd1", "cmd2", "cmd3"},
+		}
+		result, err := VerifyStateMachineSafety(nodeToStateMachineData)
+		assert.NoError(t, err)
+		assert.False(t, result)
+	})
+
+}

@@ -49,7 +49,6 @@ func (s *stateMachineNoOp) Close() error {
 // the persistent part is not atomically solid
 type stateMachineAppendOnly struct {
 	sync.RWMutex
-	latestAppliedIndex uint64
 	dataDirPath        string
 	filePath           string
 	openFile           *os.File
@@ -75,8 +74,7 @@ func (s *stateMachineAppendOnly) Close() error {
 func (s *stateMachineAppendOnly) ApplyCommand(ctx context.Context, command []byte) ([]byte, error) {
 	s.Lock()
 	defer s.Unlock()
-	s.latestAppliedIndex++
-	_, err := s.openFile.WriteString(fmt.Sprintf("%d,%s\n", s.latestAppliedIndex, command))
+	_, err := s.openFile.WriteString(fmt.Sprintf("%d\n", command))
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +85,7 @@ func (s *stateMachineAppendOnly) BatchApplyCommand(ctx context.Context, commandL
 	s.Lock()
 	defer s.Unlock()
 	for _, command := range commandList {
-		_, err := s.openFile.WriteString(fmt.Sprintf("%d,%s\n", s.latestAppliedIndex, command))
+		_, err := s.openFile.WriteString(fmt.Sprintf("%d\n", command))
 		if err != nil {
 			return nil, err
 		}
