@@ -109,3 +109,20 @@ func VerifyLogMatching(nodeToStateEntries map[string][]*log.RaftLogEntry) (bool,
 	}
 	return true, nil
 }
+
+// -------------------property of state machine safety-------------------
+// we assume the state machien apply the command log by just appned the command with \n separated the file
+
+func VerifyStateMachineSafety(nodeToStateMachineData [][]string) (bool, error) {
+	nodeCount := len(nodeToStateMachineData)
+	lineCount := len(nodeToStateMachineData[0])
+	// compare each line of each node's data to see if they are the same
+	for i := range lineCount {
+		for j := range nodeCount {
+			if nodeToStateMachineData[j][i] != nodeToStateMachineData[0][i] {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
+}
