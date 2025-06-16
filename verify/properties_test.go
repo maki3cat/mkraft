@@ -208,6 +208,15 @@ func TestVerifyLogMatching(t *testing.T) {
 
 // -------------------property of state machine safety-------------------
 func TestVerifyStateMachineSafety(t *testing.T) {
+	t.Run("different line count", func(t *testing.T) {
+		nodeToStateMachineData := [][]string{
+			{"cmd1", "cmd2", "cmd3"},
+			{"cmd1", "cmd2", "cmd3"},
+			{"cmd1", "cmd2"},
+		}
+		_, err := VerifyStateMachineSafety(nodeToStateMachineData)
+		assert.Error(t, err)
+	})
 	t.Run("all nodes have same state machine data", func(t *testing.T) {
 		nodeToStateMachineData := [][]string{
 			{"cmd1", "cmd2", "cmd3"},
