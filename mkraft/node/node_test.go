@@ -12,6 +12,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// ---------------------------------getLeaderStateFileName---------------------------------
+func TestNode_getLeaderStateFileName(t *testing.T) {
+	node, ctrl := newMockNode(t)
+	defer cleanUpTmpDir(ctrl)
+	node.NodeId = "node3"
+	assert.Equal(t, "state_node3.mk", getLeaderStateFileName(node.NodeId))
+}
+
+// ---------------------------------grantVote---------------------------------
 func TestNode_grantVote_basicsRules(t *testing.T) {
 	n, ctrl := newMockNodeWithNoExpectations(t)
 	defer cleanUpTmpDir(ctrl)

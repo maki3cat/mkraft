@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -340,4 +341,17 @@ func DeserializeNodeStateEntry(entry string) (uint32, string, NodeState, error) 
 	}
 
 	return uint32(term), nodeId, state, nil
+}
+
+const (
+	LeaderStateFileName = "state_%s.mk"
+)
+
+func getLeaderStateFileName(nodeID string) string {
+	return fmt.Sprintf(LeaderStateFileName, nodeID)
+}
+
+func getLeaderStateFilePath(nodeID string, dateDir string) string {
+	stateFileName := getLeaderStateFileName(nodeID)
+	return filepath.Join(dateDir, stateFileName)
 }
