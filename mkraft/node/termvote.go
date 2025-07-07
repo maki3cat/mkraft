@@ -63,22 +63,12 @@ func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 	if err != nil {
 		return fmt.Errorf("error reading raft state file: %w", err)
 	}
-	parts := strings.Split(string(content), ",")
-	if len(parts) == 0 || len(parts) > 2 {
-		return common.ErrCorruptPersistentFile
-	}
-
-	if len(parts) == 1 {
-		n.VotedFor = ""
-	} else {
-		n.VotedFor = strings.TrimSpace(parts[1])
-	}
-
-	term64, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
+	term, votedFor, err := n.deserializeTermAndVoteFor(string(content))
 	if err != nil {
-		return common.ErrCorruptPersistentFile
+		return err
 	}
-	n.CurrentTerm = uint32(term64)
+	n.CurrentTerm = term
+	n.VotedFor = votedFor
 	return nil
 }
 
@@ -111,6 +101,25 @@ func (n *nodeImpl) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error
 	return nil
 }
 
+func (n *nodeImpl) serializeTermAndVoteFor(term uint32, voteFor string) string {
+	return fmt.Sprintf("#%d,%s#", term, voteFor)
+}
+
+func (n *nodeImpl) deserializeTermAndVoteFor(entry string) (uint32, string, error) {
+	// Remove leading/trailing #
+	entry = strings.Trim(entry, "#")
+
+	parts := strings.Split(entry, ",")
+	if len(parts) != 2 {
+		return 0, "", common.ErrCorruptPersistentFile
+	}
+	term64, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
+	if err != nil {
+		return 0, "", common.ErrCorruptPersistentFile
+	}
+	return uint32(term64), strings.TrimSpace(parts[1]), nil
+}
+
 func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) error {
 	path := n.getTmpStateFilePath()
 	file, err := os.Create(path)
@@ -118,7 +127,8 @@ func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) erro
 		return err
 	}
 
-	_, err = file.WriteString(fmt.Sprintf("%d,%s", term, voteFor))
+	entry := n.serializeTermAndVoteFor(term, voteFor)
+	_, err = file.WriteString(entry)
 	if err != nil {
 		return err
 	}
