@@ -42,7 +42,7 @@ clean:
 
 test-nodes: build
 	echo "Starting mkraft nodes..."
-	./bin/mkraft -c ./config/local/base.yaml > node1.log 2>&1 & echo $$! > node1.pid
+	./bin/mkraft -c ./config/local/node1.yaml > node1.log 2>&1 & echo $$! > node1.pid
 	./bin/mkraft -c ./config/local/node2.yaml > node2.log 2>&1 & echo $$! > node2.pid
 	./bin/mkraft -c ./config/local/node3.yaml > node3.log 2>&1 & echo $$! > node3.pid
 	echo "Nodes running for 30 seconds..."

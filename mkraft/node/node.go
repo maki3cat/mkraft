@@ -296,7 +296,7 @@ func (n *nodeImpl) recordNodeState() {
 		}
 	}()
 
-	stateFilePath := getLeaderStateFilePath(n.NodeId, n.cfg.GetDataDir())
+	stateFilePath := getLeaderStateFilePath(n.cfg.GetDataDir())
 	file, err := os.OpenFile(stateFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		n.logger.Error("failed to open recordNodeState file, we continue to run", zap.Error(err))
@@ -344,14 +344,9 @@ func DeserializeNodeStateEntry(entry string) (uint32, string, NodeState, error) 
 }
 
 const (
-	LeaderStateFileName = "state_%s.mk"
+	LeaderStateFileName = "state.mk"
 )
 
-func getLeaderStateFileName(nodeID string) string {
-	return fmt.Sprintf(LeaderStateFileName, nodeID)
-}
-
-func getLeaderStateFilePath(nodeID string, dateDir string) string {
-	stateFileName := getLeaderStateFileName(nodeID)
-	return filepath.Join(dateDir, stateFileName)
+func getLeaderStateFilePath(dateDir string) string {
+	return filepath.Join(dateDir, LeaderStateFileName)
 }

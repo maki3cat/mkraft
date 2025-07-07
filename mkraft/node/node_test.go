@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/maki3cat/mkraft/common"
@@ -11,14 +12,6 @@ import (
 	"github.com/maki3cat/mkraft/rpc"
 	"github.com/stretchr/testify/assert"
 )
-
-// ---------------------------------getLeaderStateFileName---------------------------------
-func TestNode_getLeaderStateFileName(t *testing.T) {
-	node, ctrl := newMockNode(t)
-	defer cleanUpTmpDir(ctrl)
-	node.NodeId = "node3"
-	assert.Equal(t, "state_node3.mk", getLeaderStateFileName(node.NodeId))
-}
 
 // ---------------------------------grantVote---------------------------------
 func TestNode_grantVote_basicsRules(t *testing.T) {
@@ -98,13 +91,13 @@ func TestNode_recordLeaderState(t *testing.T) {
 	n.recordNodeState()
 
 	// Verify file exists and contains node ID
-	filePath := getLeaderStateFilePath(n.NodeId, n.cfg.GetDataDir())
+	filePath := getLeaderStateFilePath(n.cfg.GetDataDir())
 	data, err := os.ReadFile(filePath)
 	fmt.Println(string(data))
 	assert.NoError(t, err)
 	assert.Contains(t, string(data), n.NodeId)
-	assert.Contains(t, string(data), StateLeader.String())
-	assert.Contains(t, string(data), "5#") // Verify term is included
+	assert.Contains(t, strings.ToLower(string(data)), "leader") // State is lowercase in serialized format
+	assert.Contains(t, string(data), "5#")                      // Verify term is included
 }
 
 // ---------------------------------handleVoteRequest---------------------------------
