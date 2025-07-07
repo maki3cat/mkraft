@@ -12,7 +12,7 @@ func TestGetTermFileName(t *testing.T) {
 	node, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
 	node.NodeId = "node1"
-	assert.Equal(t, "termvote_node1.mk", node.getTermAndVoteForFileName())
+	assert.Equal(t, "term_votefor.mk", TermAndVoteForFileName)
 }
 
 func TestStoreCurrentTermAndVotedFor(t *testing.T) {
