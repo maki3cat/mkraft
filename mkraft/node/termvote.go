@@ -21,7 +21,7 @@ func (n *nodeImpl) getTermAndVoteForFileName() string {
 
 func (n *nodeImpl) getStateFilePath() string {
 	dir := n.cfg.GetDataDir()
-	return filepath.Join(dir, "state.rft")
+	return filepath.Join(dir, "state.mk")
 }
 
 func (n *nodeImpl) getTmpStateFilePath() string {
