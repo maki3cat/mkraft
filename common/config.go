@@ -69,7 +69,7 @@ const (
 	LEADER_HEARTBEAT_PERIOD_IN_MS = 100
 
 	// paper: $5.6, the broadcast time should be an order of magnitude less thant the election timeout
-	RPC_REUQEST_TIMEOUT_IN_MS = 20
+	RPC_REUQEST_TIMEOUT_IN_MS = 25
 	// reference: the Jeff-Dean's number everyone shall know
 	RPC_DEADLINE_MARGIN_IN_MICRO_SEC = 500
 	ELECTION_TIMEOUT_MIN_IN_MS       = 200

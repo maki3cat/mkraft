@@ -45,10 +45,11 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
 	defer func() { // gracefully exit for follower state is easy
+		n.logger.Info("worker is exiting the follower state")
 		electionTicker.Stop()
 		workerCancel()
 		workerWaitGroup.Wait() // cancel only closes the Done channel, it doesn't wait for the worker to exit
-		n.logger.Info("follower worker exited successfully")
+		n.logger.Info("follower worker exited the follower state successfully")
 		n.sem.Release(1)
 	}()
 
@@ -142,6 +143,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
 
 	defer func() {
+		n.logger.Info("worker is exiting the candidate state")
 		workerCancel()
 		workerWaitGroup.Wait() // cancel only closes the Done channel, it doesn't wait for the worker to exit
 		n.logger.Info("candidate worker exited successfully")
@@ -164,14 +166,12 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 					n.logger.Warn("raft node's main context done, exiting")
 					return
 				case response, ok := <-consensusChan: // some response from last election
-
 					if !ok || response == nil {
 						// implementaiton gap: add timeout here on error of a node
 						n.logger.Error("error in consensusChan, try to re-elect after another election timeout")
 						time.Sleep(n.cfg.GetElectionTimeout())
 						continue
 					}
-
 					if response.VoteGranted {
 						n.SetNodeState(StateLeader)
 						n.cleanupApplyLogsBeforeToLeader()
@@ -186,7 +186,6 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 									zap.String("nId", n.NodeId))
 								panic(err) // todo: error handling
 							}
-
 							n.SetNodeState(StateFollower)
 							go n.RunAsFollower(ctx)
 							return
@@ -198,15 +197,14 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 						}
 					}
 				case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
-					if !req.IsTimeout.Load() {
-						n.logger.Warn("request vote is timeout")
+					if req.IsTimeout.Load() {
+						n.logger.Warn("received a request vote from peers but it is timeout")
 						continue
 					}
 					req.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 						Resp: n.handleVoteRequest(req.Req),
 						Err:  nil,
 					}
-
 					// for voteRequest, only when the term is higher,
 					// the node will convert to follower
 					if req.Req.Term > currentTerm {
@@ -246,17 +244,16 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 	for {
 		select {
 		case <-ctx.Done():
-			n.logger.Warn("client-command-worker, exiting leader's worker for client commands")
+			n.logger.Info("client-command-worker, exiting leader's worker for client commands")
 			return
 		default:
 			select {
 			case <-ctx.Done():
-				n.logger.Warn("client-command-worker, exiting leader's worker for client commands")
+				n.logger.Info("client-command-worker, exiting leader's worker for client commands")
 				return
 			case cmd := <-n.leaderApplyCh:
-				n.logger.Warn("client-command-worker, received client command")
+				n.logger.Info("client-command-worker, received client command")
 				// todo: add delegation to the leader
-
 				// easy trivial work, can be done in parallel with the main logic, in case this dirty messages interfere with the main logicj
 				cmd.RespChan <- &utils.RPCRespWrapper[*rpc.ClientCommandResponse]{
 					Resp: &rpc.ClientCommandResponse{
@@ -374,6 +371,7 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestV
 
 	// todo: testing should be called cancelled 1) the node degrade to folower; 2) the node starts a new election;
 	timeout := n.cfg.GetElectionTimeout()
+	n.logger.Debug("async election timeout", zap.Duration("timeout", timeout))
 	electionCtx, _ := context.WithTimeout(ctx, timeout)
 	// defer electionCancel() // this is not needed, because the ConsensusRequestVote is a shortcut method
 	// and the ctx is called cancelled when the candidate shall degrade to follower
@@ -383,11 +381,13 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestV
 			Term:        n.getCurrentTerm(),
 			CandidateId: n.NodeId,
 		}
+		n.logger.Debug("asyncSendElection: sending a request vote to the consensus", zap.String("requestID", requestID), zap.Any("req", req))
 		resp, err := n.consensus.ConsensusRequestVote(electionCtx, req)
 		if err != nil {
-			n.logger.Error("error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
+			n.logger.Error("asyncSendElection: error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
 			close(consensusChan)
 		} else {
+			n.logger.Debug("asyncSendElection: received a response from the consensus", zap.String("requestID", requestID), zap.Any("resp", resp))
 			consensusChan <- resp
 		}
 	}()

@@ -2,6 +2,7 @@ package peers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -51,7 +52,6 @@ func NewPeerClientImpl(
 
 	clientOptions := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(client.loggerInterceptor),
 		grpc.WithUnaryInterceptor(client.timeoutClientInterceptor),
 		grpc.WithDefaultCallOptions(grpc.UseCompressor(gzip.Name)),
 		grpc.WithDefaultServiceConfig(cfg.GetgRPCServiceConf()),
@@ -114,11 +114,17 @@ func (rc *peerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.Request
 // broadcast timeout is used in this caller
 func (rc *peerClient) asyncCallRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
 	singleResChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], 1) // must be buffered
-	go func() {
+	ctxTimeout, ok := ctx.Deadline()
+	if !ok {
+		panic("context deadline is not set")
+	}
+	go func(ctx context.Context, req *rpc.RequestVoteRequest) {
+		rpcTimeout := time.Until(ctxTimeout)
+		rc.logger.Debug("single rpc of asyncCallRequestVote timeout", zap.Duration("timeout", rpcTimeout))
 		resp, err := rc.rawClient.RequestVote(ctx, req)
 		if err != nil {
 			requestID := common.GetRequestID(ctx)
-			rc.logger.Error("single RPC error in SendAppendEntries:",
+			rc.logger.Error("single RPC error in rawClient.RequestVote:",
 				zap.Error(err),
 				zap.String("requestID", requestID))
 		}
@@ -127,7 +133,7 @@ func (rc *peerClient) asyncCallRequestVote(ctx context.Context, req *rpc.Request
 			Err:  err,
 		}
 		singleResChan <- wrapper
-	}()
+	}(ctx, req)
 	return singleResChan
 }
 
@@ -171,56 +177,37 @@ func (rc *peerClient) AppendEntriesWithRetry(ctx context.Context, req *rpc.Appen
 //			rc.loggerInterceptor,
 //		)),
 //	)
+//
+// both logger and timeout are handled in this interceptor
 func (rc *peerClient) timeoutClientInterceptor(
 	ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 
 	requestID := uuid.New().String()
 	start := time.Now()
-	rc.logger.Debug("Starting RPC call",
-		zap.String("method", method),
-		zap.String("requestID", requestID))
-
 	rpcTimeout := rc.cfg.GetRPCRequestTimeout()
 	singleCallCtx, singleCallCancel := context.WithTimeout(ctx, rpcTimeout)
 	defer singleCallCancel()
+	rc.logger.Debug("TimeoutClientInterceptor: Starting RPC call",
+		zap.String("method", method),
+		zap.String("timeout", rpcTimeout.String()),
+		zap.String("target", cc.Target()),
+		zap.String("requestID", requestID))
 
 	err := invoker(singleCallCtx, method, req, reply, cc, opts...)
 
 	end := time.Now()
-	rc.logger.Debug("Finished RPC call",
-		zap.String("method", method),
-		zap.String("requestID", requestID),
-		zap.Duration("duration", end.Sub(start)))
-
-	return err
-}
-
-func (rc *peerClient) loggerInterceptor(
-	ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-
-	ctx, requestID := common.SetClientRequestID(ctx)
-
-	rc.logger.Debug("Starting RPC call",
-		zap.String("method", method),
-		zap.Any("request", req),
-		zap.String("target", cc.Target()),
-		zap.String("requestID", requestID))
-
-	err := invoker(ctx, method, req, reply, cc, opts...)
-
 	if err != nil {
-		rc.logger.Error("RPC call error",
+		rc.logger.Error("TimeoutClientInterceptor: RPC call error",
 			zap.String("method", method),
 			zap.Error(err),
 			zap.Any("request", req),
 			zap.String("requestID", requestID))
 	} else {
-		rc.logger.Debug("RPC call has succeeded",
+		rc.logger.Debug("TimeoutClientInterceptor: Finished RPC call",
 			zap.String("method", method),
-			zap.Any("request", req),
-			zap.Any("response", reply),
-			zap.Error(err),
-			zap.String("requestID", requestID))
+			zap.String("requestID", requestID),
+			zap.String("reply", fmt.Sprintf("%+v", reply)),
+			zap.Duration("duration", end.Sub(start)))
 	}
 	return err
 }

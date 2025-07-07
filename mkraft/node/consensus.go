@@ -65,6 +65,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.Reque
 		return nil, common.ErrDeadlineNotSet
 	}
 	rpcTimtout := time.Until(deadline)
+	c.logger.Debug("consensus request vote rpc timeout", zap.Duration("timeout", rpcTimtout))
 	if rpcTimtout <= 0 {
 		return nil, common.ErrDeadlineInThePast
 	}
