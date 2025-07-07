@@ -114,7 +114,13 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 	if n.GetNodeState() != StateCandidate {
 		panic("node is not in CANDIDATE state")
 	}
-	go n.recordNodeState() // trivial-path
+
+	// update the term and votefor self first
+	err := n.updateCurrentTermAndVotedForAsCandidate(false)
+	if err != nil {
+		n.logger.Error("error in updateCurrentTermAndVotedForAsCandidate", zap.Error(err))
+		panic(err)
+	}
 
 	n.logger.Info("node starts to acquiring CANDIDATE state")
 	n.sem.Acquire(ctx, 1)

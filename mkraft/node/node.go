@@ -182,6 +182,7 @@ func (n *nodeImpl) SetNodeState(state NodeState) {
 		zap.String("newState", state.String()))
 
 	n.state = state
+	n.recordNodeState()
 }
 
 func (n *nodeImpl) Start(ctx context.Context) {
