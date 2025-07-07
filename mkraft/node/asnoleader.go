@@ -34,7 +34,8 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	n.sem.Acquire(ctx, 1)
 	n.logger.Info("acquired semaphore in FOLLOWER state")
 
-	go n.recordNodeState() // record the whole state whenever the state changes
+	currentTerm, state, votedFor := n.GetKeyState()
+	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
@@ -66,6 +67,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 
 				case <-electionTicker.C:
 					n.SetNodeState(StateCandidate)
+					n.logger.Debug("follower prepares to convert to candidate")
 					err := n.updateCurrentTermAndVotedForAsCandidate(false)
 					if err != nil {
 						n.logger.Error("error in updateCurrentTermAndVotedForAsCandidate", zap.Error(err))
@@ -129,7 +131,8 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 	n.sem.Acquire(ctx, 1)
 	n.logger.Info("node has acquired semaphore in CANDIDATE state")
 
-	go n.recordNodeState() // record the whole state whenever the state changes
+	currentTerm, state, votedFor := n.GetKeyState()
+	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}

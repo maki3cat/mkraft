@@ -69,7 +69,8 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	n.logger.Info("acquired the Semaphore as the LEADER state")
 	defer n.sem.Release(1)
 
-	go n.recordNodeState() // trivial-path
+	currentTerm, state, votedFor := n.GetKeyState()
+	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
 
 	// maki: this is a tricky design (the whole design of the log/client command application is tricky)
 	// todo: catch up the log application to make sure lastApplied == commitIndex for the leader

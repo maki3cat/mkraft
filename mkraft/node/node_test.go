@@ -3,7 +3,6 @@ package node
 import (
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/maki3cat/mkraft/common"
@@ -79,25 +78,25 @@ func TestNode_grantVote_voteRestrictions(t *testing.T) {
 	})
 }
 
-// ---------------------------------recordLeaderState---------------------------------
-func TestNode_recordLeaderState(t *testing.T) {
+// ---------------------------------recordNodeState---------------------------------
+func TestNode_recordNodeState(t *testing.T) {
 	n, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
 
 	n.NodeId = "test-node-1"
 	n.state = StateLeader
 	n.CurrentTerm = 5
+	n.VotedFor = "test-node-2"
 
-	n.recordNodeState()
+	n.recordNodeState(n.CurrentTerm, StateLeader, n.VotedFor)
 
 	// Verify file exists and contains node ID
 	filePath := getStateFilePath(n.cfg.GetDataDir())
 	data, err := os.ReadFile(filePath)
-	fmt.Println(string(data))
 	assert.NoError(t, err)
 	assert.Contains(t, string(data), n.NodeId)
-	assert.Contains(t, strings.ToLower(string(data)), "leader") // State is lowercase in serialized format
-	assert.Contains(t, string(data), "5#")                      // Verify term is included
+	assert.Contains(t, string(data), "leader")                           // State is stored as lowercase
+	assert.Contains(t, string(data), fmt.Sprintf("#%d#", n.CurrentTerm)) // Verify term is included
 }
 
 // ---------------------------------handleVoteRequest---------------------------------

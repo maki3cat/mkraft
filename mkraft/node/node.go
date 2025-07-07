@@ -164,6 +164,12 @@ type nodeImpl struct {
 	matchIndex map[string]uint64 // map[peerID]matchIndex, index of highest log entry known to be replicated on that server
 }
 
+func (n *nodeImpl) GetKeyState() (uint32, NodeState, string) {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	return n.CurrentTerm, n.state, n.VotedFor
+}
+
 func (n *nodeImpl) GetNodeState() NodeState {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
@@ -292,7 +298,8 @@ func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVo
 	}
 }
 
-func (n *nodeImpl) recordNodeState() {
+// if we don't add currentTerm, nodeId, state, voteFor, we need to acquire the lock for the whole recordNodeState again
+func (n *nodeImpl) recordNodeState(currentTerm uint32, state NodeState, voteFor string) {
 	n.logger.Debug("entering recordNodeState")
 	defer func() {
 		if r := recover(); r != nil {
@@ -300,13 +307,10 @@ func (n *nodeImpl) recordNodeState() {
 		}
 	}()
 
-	// ‑‑‑ 1.  Lock only as long as the file handle is in use ‑‑‑
 	n.stateFileLock.Lock()
 	defer n.stateFileLock.Unlock()
 
 	stateFilePath := getStateFilePath(n.cfg.GetDataDir())
-
-	// ‑‑‑ 2.  Open *once* with O_CREATE|O_APPEND so we never truncate ‑‑‑
 	file, err := os.OpenFile(
 		stateFilePath,
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
@@ -318,24 +322,16 @@ func (n *nodeImpl) recordNodeState() {
 	}
 	defer file.Close()
 
-	// ‑‑‑ 3.  Build the entry line (ensure it ends with \n) ‑‑‑
-	term, state, voteFor := n.getCurrentTerm(), n.GetNodeState(), n.VotedFor
-	entry := serializeNodeStateEntry(term, n.NodeId, state, voteFor) // e.g. "START#0#…#END\n"
+	entry := serializeNodeStateEntry(currentTerm, n.NodeId, state, voteFor) // e.g. "START#0#…#END\n"
 	if !strings.HasSuffix(entry, "\n") {
 		entry += "\n"
 	}
-
-	// ‑‑‑ 4.  Write *atomically* via O_APPEND ‑‑‑
-	n.logger.Debug("recordNodeState write",
-		zap.String("path", stateFilePath), zap.String("entry", entry))
-
 	if nBytes, err := file.WriteString(entry); err != nil || nBytes != len(entry) {
 		n.logger.Error("write recordNodeState", zap.Error(err),
 			zap.Int("wrote", nBytes), zap.Int("expected", len(entry)))
 		return
 	}
 
-	// ‑‑‑ 5.  fsync for durability ‑‑‑
 	if err := file.Sync(); err != nil {
 		n.logger.Warn("fsync recordNodeState", zap.Error(err))
 	}
