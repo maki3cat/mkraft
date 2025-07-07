@@ -97,6 +97,8 @@ func NewNode(
 		lastApplied: 0,
 		nextIndex:   make(map[string]uint64, 6),
 		matchIndex:  make(map[string]uint64, 6),
+
+		stateFileLock: &sync.Mutex{},
 	}
 
 	// load persistent state
@@ -129,6 +131,9 @@ type nodeImpl struct {
 	sem *semaphore.Weighted
 	// a RW mutex for all the internal states in this node
 	stateRWLock *sync.RWMutex
+
+	// persistent file's lock
+	stateFileLock *sync.Mutex
 
 	NodeId string // maki: nodeID uuid or number or something else?
 	state  NodeState
@@ -290,11 +295,15 @@ func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVo
 // record the node state change history for viewing
 // since it is a trivial-path, we don't let it impact the functions
 func (n *nodeImpl) recordNodeState() {
+
 	defer func() {
 		if r := recover(); r != nil {
 			n.logger.Error("panic in recordNodeState, we continue to run", zap.Any("panic", r))
 		}
 	}()
+
+	n.stateFileLock.Lock()
+	defer n.stateFileLock.Unlock()
 
 	stateFilePath := getLeaderStateFilePath(n.cfg.GetDataDir())
 	file, err := os.OpenFile(stateFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -306,12 +315,16 @@ func (n *nodeImpl) recordNodeState() {
 
 	term, state := n.getCurrentTerm(), n.GetNodeState()
 	entry := serializeNodeStateEntry(term, n.NodeId, state)
-
-	_, writeErr := file.WriteString(entry)
-	if writeErr != nil {
-		n.logger.Error("failed to append NodeID to recordNodeState file, we continue to run", zap.Error(writeErr))
+	length, writeErr := file.WriteString(entry)
+	if writeErr != nil || length != len(entry) {
+		// todo: use panic to check for errors
+		panic("failed to append NodeID to recordNodeState file, we continue to run")
+		// n.logger.Error(
+		// 	"failed to append NodeID to recordNodeState file, we continue to run",
+		// 	zap.Error(writeErr), zap.Int("length", length), zap.Int("expected", len(entry)))
 	}
 }
+
 func serializeNodeStateEntry(term uint32, nodeId string, state NodeState) string {
 	currentTime := time.Now().Format(time.RFC3339)
 	return fmt.Sprintf("%d#%s#%s#%s\n", term, currentTime, nodeId, state)
