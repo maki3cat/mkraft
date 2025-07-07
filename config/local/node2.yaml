@@ -31,4 +31,4 @@ membership:
       node_uri: localhost:18083
 
 basic_config:
-  raft_log_file_path: /tmp/raft_log2
+  data_dir: ./data/node2
