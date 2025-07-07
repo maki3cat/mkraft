@@ -16,12 +16,12 @@ import (
 // the Persistent state on all servers: currentTerm, votedFor
 // the logs are managed by RaftLogImpl, which is a separate file
 func (n *nodeImpl) getTermAndVoteForFileName() string {
-	return fmt.Sprintf("termvote_%s.mk", n.NodeId)
+	return "term_votefor.mk"
 }
 
 func (n *nodeImpl) getStateFilePath() string {
 	dir := n.cfg.GetDataDir()
-	return filepath.Join(dir, "state.mk")
+	return filepath.Join(dir, "term_votefor.mk")
 }
 
 func (n *nodeImpl) getTmpStateFilePath() string {

@@ -91,7 +91,7 @@ func TestNode_recordLeaderState(t *testing.T) {
 	n.recordNodeState()
 
 	// Verify file exists and contains node ID
-	filePath := getLeaderStateFilePath(n.cfg.GetDataDir())
+	filePath := getStateFilePath(n.cfg.GetDataDir())
 	data, err := os.ReadFile(filePath)
 	fmt.Println(string(data))
 	assert.NoError(t, err)

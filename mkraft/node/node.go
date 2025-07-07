@@ -291,43 +291,57 @@ func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVo
 	}
 }
 
-// trivial-path
-// record the node state change history for viewing
-// since it is a trivial-path, we don't let it impact the functions
 func (n *nodeImpl) recordNodeState() {
-
 	defer func() {
 		if r := recover(); r != nil {
-			n.logger.Error("panic in recordNodeState, we continue to run", zap.Any("panic", r))
+			n.logger.Error("panic in recordNodeState; continuing", zap.Any("panic", r))
 		}
 	}()
 
+	// ‑‑‑ 1.  Lock only as long as the file handle is in use ‑‑‑
 	n.stateFileLock.Lock()
 	defer n.stateFileLock.Unlock()
 
-	stateFilePath := getLeaderStateFilePath(n.cfg.GetDataDir())
-	file, err := os.OpenFile(stateFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	stateFilePath := getStateFilePath(n.cfg.GetDataDir())
+
+	// ‑‑‑ 2.  Open *once* with O_CREATE|O_APPEND so we never truncate ‑‑‑
+	file, err := os.OpenFile(
+		stateFilePath,
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0o644,
+	)
 	if err != nil {
-		n.logger.Error("failed to open recordNodeState file, we continue to run", zap.Error(err))
-	} else {
-		defer file.Close()
+		n.logger.Error("open recordNodeState file", zap.Error(err))
+		return // nothing more we can do
+	}
+	defer file.Close()
+
+	// ‑‑‑ 3.  Build the entry line (ensure it ends with \n) ‑‑‑
+	term, state := n.getCurrentTerm(), n.GetNodeState()
+	entry := serializeNodeStateEntry(term, n.NodeId, state) // e.g. "START#0#…#END\n"
+	if !strings.HasSuffix(entry, "\n") {
+		entry += "\n"
 	}
 
-	term, state := n.getCurrentTerm(), n.GetNodeState()
-	entry := serializeNodeStateEntry(term, n.NodeId, state)
-	length, writeErr := file.WriteString(entry)
-	if writeErr != nil || length != len(entry) {
-		// todo: use panic to check for errors
-		panic("failed to append NodeID to recordNodeState file, we continue to run")
-		// n.logger.Error(
-		// 	"failed to append NodeID to recordNodeState file, we continue to run",
-		// 	zap.Error(writeErr), zap.Int("length", length), zap.Int("expected", len(entry)))
+	// ‑‑‑ 4.  Write *atomically* via O_APPEND ‑‑‑
+	n.logger.Debug("recordNodeState write",
+		zap.String("path", stateFilePath), zap.String("entry", entry))
+
+	if nBytes, err := file.WriteString(entry); err != nil || nBytes != len(entry) {
+		n.logger.Error("write recordNodeState", zap.Error(err),
+			zap.Int("wrote", nBytes), zap.Int("expected", len(entry)))
+		return
+	}
+
+	// ‑‑‑ 5.  fsync for durability ‑‑‑
+	if err := file.Sync(); err != nil {
+		n.logger.Warn("fsync recordNodeState", zap.Error(err))
 	}
 }
 
 func serializeNodeStateEntry(term uint32, nodeId string, state NodeState) string {
 	currentTime := time.Now().Format(time.RFC3339)
-	return fmt.Sprintf("%d#%s#%s#%s\n", term, currentTime, nodeId, state)
+	return fmt.Sprintf("START#%d#%s#%s#%s#END\n", term, currentTime, nodeId, state)
 }
 
 func DeserializeNodeStateEntry(entry string) (uint32, string, NodeState, error) {
@@ -356,10 +370,6 @@ func DeserializeNodeStateEntry(entry string) (uint32, string, NodeState, error) 
 	return uint32(term), nodeId, state, nil
 }
 
-const (
-	LeaderStateFileName = "state.mk"
-)
-
-func getLeaderStateFilePath(dateDir string) string {
-	return filepath.Join(dateDir, LeaderStateFileName)
+func getStateFilePath(dateDir string) string {
+	return filepath.Join(dateDir, "state_history.mk")
 }
