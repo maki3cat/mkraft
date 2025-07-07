@@ -33,7 +33,8 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	n.logger.Info("node acquires to run in FOLLOWER state")
 	n.sem.Acquire(ctx, 1)
 	n.logger.Info("acquired semaphore in FOLLOWER state")
-	go n.recordNodeState() // trivial-path
+
+	go n.recordNodeState() // record the whole state whenever the state changes
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
@@ -58,13 +59,21 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 		default:
 			{
 				select {
+
 				case <-ctx.Done():
 					n.logger.Warn("raft node's main context done, exiting")
 					return
+
 				case <-electionTicker.C:
 					n.SetNodeState(StateCandidate)
+					err := n.updateCurrentTermAndVotedForAsCandidate(false)
+					if err != nil {
+						n.logger.Error("error in updateCurrentTermAndVotedForAsCandidate", zap.Error(err))
+						panic(err)
+					}
 					go n.RunAsCandidate(ctx)
 					return
+
 				case requestVoteInternal := <-n.requestVoteCh:
 					electionTicker.Reset(n.cfg.GetElectionTimeout())
 					if requestVoteInternal.IsTimeout.Load() {
@@ -77,6 +86,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 						Err:  nil,
 					}
 					requestVoteInternal.RespChan <- &wrappedResp
+
 				case appendEntryInternal := <-n.appendEntryCh:
 					if appendEntryInternal.Req.Term >= n.getCurrentTerm() {
 						electionTicker.Reset(n.cfg.GetElectionTimeout())
@@ -115,16 +125,11 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 		panic("node is not in CANDIDATE state")
 	}
 
-	// update the term and votefor self first
-	err := n.updateCurrentTermAndVotedForAsCandidate(false)
-	if err != nil {
-		n.logger.Error("error in updateCurrentTermAndVotedForAsCandidate", zap.Error(err))
-		panic(err)
-	}
-
 	n.logger.Info("node starts to acquiring CANDIDATE state")
 	n.sem.Acquire(ctx, 1)
 	n.logger.Info("node has acquired semaphore in CANDIDATE state")
+
+	go n.recordNodeState() // record the whole state whenever the state changes
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}

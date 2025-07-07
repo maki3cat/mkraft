@@ -171,6 +171,7 @@ func (n *nodeImpl) GetNodeState() NodeState {
 }
 
 func (n *nodeImpl) SetNodeState(state NodeState) {
+	n.logger.Debug("entering SetNodeState")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	if n.state == state {
@@ -180,9 +181,8 @@ func (n *nodeImpl) SetNodeState(state NodeState) {
 		zap.String("nodeID", n.NodeId),
 		zap.String("oldState", n.state.String()),
 		zap.String("newState", state.String()))
-
 	n.state = state
-	n.recordNodeState()
+	n.logger.Debug("exiting SetNodeState")
 }
 
 func (n *nodeImpl) Start(ctx context.Context) {
@@ -293,6 +293,7 @@ func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVo
 }
 
 func (n *nodeImpl) recordNodeState() {
+	n.logger.Debug("entering recordNodeState")
 	defer func() {
 		if r := recover(); r != nil {
 			n.logger.Error("panic in recordNodeState; continuing", zap.Any("panic", r))
@@ -318,8 +319,8 @@ func (n *nodeImpl) recordNodeState() {
 	defer file.Close()
 
 	// ‑‑‑ 3.  Build the entry line (ensure it ends with \n) ‑‑‑
-	term, state := n.getCurrentTerm(), n.GetNodeState()
-	entry := serializeNodeStateEntry(term, n.NodeId, state) // e.g. "START#0#…#END\n"
+	term, state, voteFor := n.getCurrentTerm(), n.GetNodeState(), n.VotedFor
+	entry := serializeNodeStateEntry(term, n.NodeId, state, voteFor) // e.g. "START#0#…#END\n"
 	if !strings.HasSuffix(entry, "\n") {
 		entry += "\n"
 	}
@@ -338,11 +339,12 @@ func (n *nodeImpl) recordNodeState() {
 	if err := file.Sync(); err != nil {
 		n.logger.Warn("fsync recordNodeState", zap.Error(err))
 	}
+	n.logger.Debug("exiting recordNodeState")
 }
 
-func serializeNodeStateEntry(term uint32, nodeId string, state NodeState) string {
+func serializeNodeStateEntry(term uint32, nodeId string, state NodeState, voteFor string) string {
 	currentTime := time.Now().Format(time.RFC3339)
-	return fmt.Sprintf("START#%d#%s#%s#%s#END\n", term, currentTime, nodeId, state)
+	return fmt.Sprintf("#%s#%d#%s#%s#%s#\n", currentTime, term, nodeId, state, voteFor)
 }
 
 func DeserializeNodeStateEntry(entry string) (uint32, string, NodeState, error) {
