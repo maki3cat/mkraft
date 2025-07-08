@@ -3,14 +3,18 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 )
 
-// Matches “… term N, nodeID X, state Y …”
-var lineRE = regexp.MustCompile(`\bterm (\d+),\s+nodeID (\S+),\s+state (\S+)`)
+// “… term 12, nodeID node3, state Leader …”
+var lineRE = regexp.MustCompile(
+	`\bterm\s+(\d+)\s*,\s*nodeID\s+(\S+?)\s*,\s*state\s+([A-Za-z]+)\b`,
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -18,22 +22,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// term → set[nodeID] for lines where state == Leader
-	leadersByTerm := map[int]map[string]struct{}{}
-
-	// term → bool (seen at least once)
-	termsSeen := map[int]bool{}
+	leadersByTerm := map[int]map[string]struct{}{} // term → set[nodeID]
+	termsSeen := map[int]bool{}                    // term mentioned at all
+	minTerm, maxTerm := math.MaxInt, math.MinInt   // track range
 
 	for _, path := range os.Args[1:] {
-		if err := processFile(path, leadersByTerm, termsSeen); err != nil {
+		if err := processFile(path, leadersByTerm, termsSeen, &minTerm, &maxTerm); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
 	}
 
-	report(termsSeen, leadersByTerm)
+	report(minTerm, maxTerm, termsSeen, leadersByTerm)
 }
 
-func processFile(path string, leadersByTerm map[int]map[string]struct{}, termsSeen map[int]bool) error {
+func processFile(
+	path string,
+	leadersByTerm map[int]map[string]struct{},
+	termsSeen map[int]bool,
+	minTerm, maxTerm *int,
+) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
@@ -42,14 +49,22 @@ func processFile(path string, leadersByTerm map[int]map[string]struct{}, termsSe
 
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		m := lineRE.FindStringSubmatch(sc.Text())
+		line := strings.Trim(sc.Text(), "#") // remove leading/trailing '#'
+		m := lineRE.FindStringSubmatch(line)
 		if len(m) != 4 {
-			continue
+			continue // not a log line
 		}
+
 		termNum, _ := strconv.Atoi(m[1])
 		nodeID, state := m[2], m[3]
 
 		termsSeen[termNum] = true
+		if termNum < *minTerm {
+			*minTerm = termNum
+		}
+		if termNum > *maxTerm {
+			*maxTerm = termNum
+		}
 
 		if state == "Leader" {
 			set := leadersByTerm[termNum]
@@ -60,22 +75,26 @@ func processFile(path string, leadersByTerm map[int]map[string]struct{}, termsSe
 			set[nodeID] = struct{}{}
 		}
 	}
-
 	return sc.Err()
 }
 
-func report(termsSeen map[int]bool, leadersByTerm map[int]map[string]struct{}) {
-	// Sort terms numerically for prettier output.
-	var terms []int
-	for t := range termsSeen {
-		terms = append(terms, t)
+func report(
+	minTerm, maxTerm int,
+	termsSeen map[int]bool,
+	leadersByTerm map[int]map[string]struct{},
+) {
+	if len(termsSeen) == 0 {
+		fmt.Println("no terms found in the supplied files")
+		return
 	}
-	sort.Ints(terms)
 
-	for _, term := range terms {
-		nodes := leadersByTerm[term]
+	for term := minTerm; term <= maxTerm; term++ {
+		if !termsSeen[term] {
+			fmt.Printf("term %-6d  MISSING\n", term)
+			continue
+		}
 
-		switch len(nodes) {
+		switch nodes := leadersByTerm[term]; len(nodes) {
 		case 0:
 			fmt.Printf("term %-6d  NO LEADER\n", term)
 		case 1:
@@ -87,10 +106,10 @@ func report(termsSeen map[int]bool, leadersByTerm map[int]map[string]struct{}) {
 }
 
 func keys(set map[string]struct{}) []string {
-	k := make([]string, 0, len(set))
+	out := make([]string, 0, len(set))
 	for s := range set {
-		k = append(k, s)
+		out = append(out, s)
 	}
-	sort.Strings(k)
-	return k
+	sort.Strings(out)
+	return out
 }

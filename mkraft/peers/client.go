@@ -114,13 +114,7 @@ func (rc *peerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.Request
 // broadcast timeout is used in this caller
 func (rc *peerClient) asyncCallRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
 	singleResChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], 1) // must be buffered
-	ctxTimeout, ok := ctx.Deadline()
-	if !ok {
-		panic("context deadline is not set")
-	}
 	go func(ctx context.Context, req *rpc.RequestVoteRequest) {
-		rpcTimeout := time.Until(ctxTimeout)
-		rc.logger.Debug("single rpc of asyncCallRequestVote timeout", zap.Duration("timeout", rpcTimeout))
 		resp, err := rc.rawClient.RequestVote(ctx, req)
 		if err != nil {
 			requestID := common.GetRequestID(ctx)
