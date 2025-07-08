@@ -34,9 +34,6 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	n.sem.Acquire(ctx, 1)
 	n.logger.Info("STATE CHANGE: acquired semaphore in FOLLOWER state")
 
-	currentTerm, state, votedFor := n.GetKeyState()
-	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
-
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
 	workerWaitGroup.Add(2)
@@ -79,6 +76,10 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 						continue
 					}
 					resp := n.handleVoteRequest(requestVoteInternal.Req)
+					if resp.VoteGranted {
+						currentTerm, state, votedFor := n.GetKeyState()
+						n.recordNodeState(currentTerm, state, votedFor)
+					}
 					wrappedResp := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 						Resp: resp,
 						Err:  nil,
@@ -239,6 +240,8 @@ func (n *nodeImpl) candidateHandlePeerRequest(ctx context.Context, workerWaitGro
 				currentTerm := n.getCurrentTerm()
 				if req.Req.Term > currentTerm {
 					n.SetNodeState(StateFollower)
+					currentTerm, state, votedFor := n.GetKeyState()
+					n.recordNodeState(currentTerm, state, votedFor)
 					close(degradeChan)
 					return
 				}
@@ -256,6 +259,8 @@ func (n *nodeImpl) candidateHandlePeerRequest(ctx context.Context, workerWaitGro
 				currentTerm := n.getCurrentTerm()
 				if req.Req.Term >= currentTerm {
 					n.SetNodeState(StateFollower)
+					currentTerm, state, votedFor := n.GetKeyState()
+					n.recordNodeState(currentTerm, state, votedFor)
 					close(degradeChan)
 					return
 				}

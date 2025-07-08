@@ -87,23 +87,28 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	var err error
 
 	for {
+
 		if singleJobResult.ShallDegrade {
+			n.logger.Info("STATE CHANGE: leader is degraded to follower")
 			subWorkerCancel()
+			n.SetNodeState(StateFollower)
 			n.storeCurrentTermAndVotedFor(uint32(singleJobResult.Term), singleJobResult.VotedFor, false)
+			currentTerm, state, votedFor := n.GetKeyState()
+			n.recordNodeState(currentTerm, state, votedFor)
 			n.cleanupApplyLogsBeforeToFollower()
+			go n.RunAsFollower(ctx)
 			return
 		}
+
 		select {
 		case <-ctx.Done(): // give ctx higher priority
 			n.logger.Warn("raft node main context done, exiting")
 			return
 		default:
 			select {
-
 			case <-ctx.Done():
 				n.logger.Warn("raft node main context done, exiting")
 				return
-
 			// task1: send the heartbeat -> as leader, may degrade to follower
 			case <-tickerForHeartbeat.C:
 				tickerForHeartbeat.Reset(heartbeatDuration)
@@ -123,7 +128,6 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 					// todo: as is same with most other panics, temporary solution, shall handle the error properly
 					panic(err)
 				}
-
 			// task3: handle the requestVoteChan -> as a node, may degrade to follower
 			case internalReq := <-n.requestVoteCh:
 				singleJobResult, err = n.handleRequestVoteAsLeader(internalReq)
@@ -205,7 +209,7 @@ func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 		// another failed reason is the prelog is not correct
 		if resp.Term > currentTerm {
 			n.logger.Warn("peer's term is greater than current term", zap.String("requestID", requestID))
-			return JobResult{ShallDegrade: true, Term: TermRank(resp.Term)}, nil
+			return JobResult{ShallDegrade: true, Term: TermRank(resp.Term), VotedFor: "Na"}, nil
 		} else {
 			// should retry: may be from the network error and the majority failed
 			return JobResult{ShallDegrade: false}, errors.New("append entries failed, shall retry")
@@ -296,7 +300,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 	resp := <-respChan
 	if !resp.Success { // no consensus
 		if resp.Term > currentTerm {
-			return JobResult{ShallDegrade: true, Term: TermRank(resp.Term)}, nil
+			return JobResult{ShallDegrade: true, Term: TermRank(resp.Term), VotedFor: "Na"}, nil
 		} else {
 			// todo: the unsafe panic is temporarily used for debugging
 			panic("failed append entries, but without not a higher term")
@@ -320,7 +324,7 @@ func (n *nodeImpl) handlerAppendEntriesAsLeader(internalReq *utils.AppendEntries
 	currentTerm := n.getCurrentTerm()
 
 	if reqTerm > currentTerm {
-		result := JobResult{ShallDegrade: true, Term: TermRank(reqTerm)}
+		result := JobResult{ShallDegrade: true, Term: TermRank(reqTerm), VotedFor: "Na"}
 		// implementation gap:
 		// maki: this may be a very tricky design in implementation,
 		// but this simplifies the logic here
@@ -356,7 +360,7 @@ func (n *nodeImpl) handleRequestVoteAsLeader(internalReq *utils.RequestVoteInter
 	}
 	internalReq.RespChan <- &wrapper
 	if resp.VoteGranted {
-		return JobResult{ShallDegrade: true, Term: TermRank(internalReq.Req.Term)}, nil
+		return JobResult{ShallDegrade: true, Term: TermRank(internalReq.Req.Term), VotedFor: "Na"}, nil
 	} else {
 		return JobResult{ShallDegrade: false}, nil
 	}

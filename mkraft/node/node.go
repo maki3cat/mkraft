@@ -191,6 +191,8 @@ func (n *nodeImpl) SetNodeState(state NodeState) {
 }
 
 func (n *nodeImpl) Start(ctx context.Context) {
+	currentTerm, state, votedFor := n.GetKeyState()
+	n.recordNodeState(currentTerm, state, votedFor) // trivial-path
 	go n.RunAsFollower(ctx)
 }
 

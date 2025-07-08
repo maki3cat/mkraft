@@ -6,61 +6,59 @@ import (
 	"strings"
 
 	"github.com/maki3cat/mkraft/mkraft/log"
-	"github.com/maki3cat/mkraft/mkraft/node"
-	"go.uber.org/zap"
 )
-
-var logger, _ = zap.NewDevelopment()
 
 // -------------------property of leader election safety-------------------
 
 func VerifyLeaderSafetyFromFiles(nodeToStateFilePath map[string]string) (bool, error) {
-	nodeToStateEntries := make(map[string]string)
-	for nodeId, stateFilePath := range nodeToStateFilePath {
-		entries, err := os.ReadFile(stateFilePath)
+	// Map to track leaders per term
+	termToLeaders := make(map[uint32][]string)
+
+	// Process each node's state history file
+	for nodeId, filePath := range nodeToStateFilePath {
+		entries, err := os.ReadFile(filePath)
 		if err != nil {
-			logger.Error("failed to read state file", zap.String("nodeId", nodeId), zap.String("stateFilePath", stateFilePath), zap.Error(err))
-			return false, err
+			return false, fmt.Errorf("failed to read state file for node %s: %v", nodeId, err)
 		}
-		nodeToStateEntries[nodeId] = string(entries)
-	}
-	return verifyLeaderSafety(nodeToStateEntries)
-}
 
-func verifyLeaderSafety(nodeToStateEntries map[string]string) (bool, error) {
-	termToStates := make(map[uint32]map[node.NodeState][]string)
-	for _, stateEntries := range nodeToStateEntries {
-		stateEntries = strings.TrimSpace(stateEntries)
-		if stateEntries == "" {
-			continue
-		}
-		// Parse each line in the state file
-		entries := strings.SplitN(strings.TrimSpace(stateEntries), "\n", -1)
-		for _, entry := range entries {
-			term, nodeId, state, err := node.DeserializeNodeStateEntry(entry)
-			if err != nil {
-				return false, err
+		// Split into lines and process each state entry
+		lines := strings.Split(strings.TrimSpace(string(entries)), "\n")
+		for _, line := range lines {
+			// Parse state entry format: #<timestamp>, term <term>, nodeID <id>, state <state>, vote for <vote>#
+			if !strings.HasPrefix(line, "#") || !strings.HasSuffix(line, "#") {
+				continue
 			}
 
-			// Initialize map for this term if needed
-			if _, exists := termToStates[term]; !exists {
-				termToStates[term] = make(map[node.NodeState][]string)
-				termToStates[term][node.StateLeader] = []string{}
-				termToStates[term][node.StateFollower] = []string{}
-				termToStates[term][node.StateCandidate] = []string{}
+			// Extract term and state
+			parts := strings.Split(line[1:len(line)-1], ", ")
+			if len(parts) < 4 {
+				continue
 			}
 
-			// Add node to appropriate state list for this term
-			termToStates[term][state] = append(termToStates[term][state], nodeId)
+			var term uint32
+			var state string
+			for _, part := range parts {
+				if strings.HasPrefix(part, "term ") {
+					fmt.Sscanf(part, "term %d", &term)
+				} else if strings.HasPrefix(part, "state ") {
+					state = strings.TrimPrefix(part, "state ")
+				}
+			}
+
+			// Record if node was a leader for this term
+			if state == "Leader" {
+				termToLeaders[term] = append(termToLeaders[term], nodeId)
+			}
 		}
 	}
-	// check if there is a leader in each term
-	for term, states := range termToStates {
-		if len(states[node.StateLeader]) != 1 {
-			fmt.Println("term", term, "has", len(states[node.StateLeader]), "leaders")
-			return false, nil
+
+	// Check for terms with multiple leaders
+	for term, leaders := range termToLeaders {
+		if len(leaders) > 1 {
+			return false, fmt.Errorf("term %d had multiple leaders: %v", term, leaders)
 		}
 	}
+
 	return true, nil
 }
 

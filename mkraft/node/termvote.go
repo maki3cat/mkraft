@@ -100,7 +100,7 @@ func (n *nodeImpl) storeCurrentTermAndVotedFor(term uint32, voteFor string, reEn
 		return err
 	}
 	n.CurrentTerm = term
-	n.recordNodeState(term, n.state, voteFor)
+	// n.recordNodeState(term, n.state, voteFor)
 	return nil
 }
 
@@ -116,7 +116,7 @@ func (n *nodeImpl) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error
 		return err
 	}
 	n.CurrentTerm = term
-	n.recordNodeState(term, StateCandidate, voteFor)
+	// n.recordNodeState(term, StateCandidate, voteFor)
 	return nil
 }
 
