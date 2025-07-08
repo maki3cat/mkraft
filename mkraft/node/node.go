@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -340,33 +339,7 @@ func (n *nodeImpl) recordNodeState(currentTerm uint32, state NodeState, voteFor 
 
 func serializeNodeStateEntry(term uint32, nodeId string, state NodeState, voteFor string) string {
 	currentTime := time.Now().Format(time.RFC3339)
-	return fmt.Sprintf("#%s#%d#%s#%s#%s#\n", currentTime, term, nodeId, state, voteFor)
-}
-
-func DeserializeNodeStateEntry(entry string) (uint32, string, NodeState, error) {
-	parts := strings.Split(strings.TrimSpace(entry), "#")
-	if len(parts) != 4 {
-		return 0, "", StateFollower, common.ErrCorruptLine
-	}
-
-	term, err := strconv.ParseUint(parts[0], 10, 32)
-	if err != nil {
-		return 0, "", StateFollower, common.ErrCorruptLine
-	}
-
-	nodeId := parts[2]
-
-	var state NodeState
-	switch parts[3] {
-	case "leader":
-		state = StateLeader
-	case "candidate":
-		state = StateCandidate
-	default:
-		state = StateFollower
-	}
-
-	return uint32(term), nodeId, state, nil
+	return fmt.Sprintf("#%s, term %d, nodeID %s, state %s, vote for %s#\n", currentTime, term, nodeId, state, voteFor)
 }
 
 func getStateFilePath(dateDir string) string {

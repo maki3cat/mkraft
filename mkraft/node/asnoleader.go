@@ -30,9 +30,9 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	if n.GetNodeState() != StateFollower {
 		panic("node is not in FOLLOWER state")
 	}
-	n.logger.Info("node acquires to run in FOLLOWER state")
+	n.logger.Info("STATE CHANGE: node acquires to run in FOLLOWER state")
 	n.sem.Acquire(ctx, 1)
-	n.logger.Info("acquired semaphore in FOLLOWER state")
+	n.logger.Info("STATE CHANGE: acquired semaphore in FOLLOWER state")
 
 	currentTerm, state, votedFor := n.GetKeyState()
 	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
@@ -67,13 +67,8 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					return
 
 				case <-electionTicker.C:
+					n.logger.Debug("STATE CHANGE: follower timeouts and upgrades to candidate")
 					n.SetNodeState(StateCandidate)
-					n.logger.Debug("follower prepares to convert to candidate")
-					err := n.updateCurrentTermAndVotedForAsCandidate(false)
-					if err != nil {
-						n.logger.Error("error in updateCurrentTermAndVotedForAsCandidate", zap.Error(err))
-						panic(err)
-					}
 					go n.RunAsCandidate(ctx)
 					return
 
@@ -128,19 +123,22 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 		panic("node is not in CANDIDATE state")
 	}
 
-	n.logger.Info("node starts to acquiring CANDIDATE state")
+	n.logger.Info("STATE CHANGE: node starts to acquiring CANDIDATE state")
 	n.sem.Acquire(ctx, 1)
-	n.logger.Info("node has acquired semaphore in CANDIDATE state")
+	n.logger.Info("STATE CHANGE: node has acquired semaphore in CANDIDATE state")
 
-	currentTerm, state, votedFor := n.GetKeyState()
-	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
+	// there is no tikcer in this cancdiate state, and we use this election return as a de facto ticker
+	// the candidate replies on the election to trigger recording of state
+	consensusChan := n.asyncSendElection(ctx)
+	degradeChan := make(chan struct{}) // if the node is degraded to follower, this channel will be closed
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
-	workerWaitGroup.Add(2)
+	workerWaitGroup.Add(3)
 	n.noleaderApplySignalCh = make(chan bool, n.cfg.GetRaftNodeRequestBufferSize())
 	go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
+	go n.candidateHandlePeerRequest(workerCtx, &workerWaitGroup, degradeChan)
 
 	defer func() {
 		n.logger.Info("worker is exiting the candidate state")
@@ -150,8 +148,8 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 		n.sem.Release(1)
 	}()
 
-	// there is no tikcer in this cancdiate state, and we use this election return as a de facto ticker
-	consensusChan := n.asyncSendElection(ctx)
+	reElectionTimer := time.NewTimer(n.cfg.GetElectionTimeout())
+	defer reElectionTimer.Stop()
 
 	for {
 		currentTerm := n.getCurrentTerm()
@@ -162,19 +160,26 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 		default:
 			{
 				select {
+				case <-reElectionTimer.C:
+					n.logger.Debug("ELECTION: candidate timer fires, starts a new election")
+					consensusChan = n.asyncSendElection(ctx)
+					reElectionTimer.Reset(n.cfg.GetElectionTimeout())
 				case <-ctx.Done():
 					n.logger.Warn("raft node's main context done, exiting")
 					return
-				case response, ok := <-consensusChan: // some response from last election
-					if !ok || response == nil {
-						// implementaiton gap: add timeout here on error of a node
-						n.logger.Error("error in consensusChan, try to re-elect after another election timeout")
-						time.Sleep(n.cfg.GetElectionTimeout())
+				case response, ok := <-consensusChan:
+					if !ok {
+						panic("consensusChan should never be closed")
+					}
+					reElectionTimer.Reset(n.cfg.GetElectionTimeout())
+					if response.Err != nil {
+						n.logger.Error("error in consensusChan, try to re-elect after another election timeout", zap.Error(response.Err))
 						continue
 					}
 					if response.VoteGranted {
 						n.SetNodeState(StateLeader)
 						n.cleanupApplyLogsBeforeToLeader()
+						n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
 						go n.RunAsLeader(ctx)
 						return
 					} else {
@@ -187,6 +192,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 								panic(err) // todo: error handling
 							}
 							n.SetNodeState(StateFollower)
+							n.logger.Info("STATE CHANGE: candidate is degraded to follower")
 							go n.RunAsFollower(ctx)
 							return
 						} else {
@@ -196,38 +202,10 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 							consensusChan = n.asyncSendElection(ctx)
 						}
 					}
-				case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
-					if req.IsTimeout.Load() {
-						n.logger.Warn("received a request vote from peers but it is timeout")
-						continue
-					}
-					req.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-						Resp: n.handleVoteRequest(req.Req),
-						Err:  nil,
-					}
-					// for voteRequest, only when the term is higher,
-					// the node will convert to follower
-					if req.Req.Term > currentTerm {
-						n.SetNodeState(StateFollower)
-						go n.RunAsFollower(ctx)
-						return
-					}
-				case req := <-n.appendEntryCh: // commonRule: handling appendEntry from a leader which can be stale or new
-					if req.IsTimeout.Load() {
-						n.logger.Warn("append entry is timeout")
-						continue
-					}
-					req.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
-						Resp: n.receiveAppendEntriesAsNoLeader(ctx, req.Req),
-						Err:  nil,
-					}
-					// maki: here is a bit tricky compared with voteRequest
-					// but for appendEntry, only the term can be equal or higher
-					if req.Req.Term >= currentTerm {
-						n.SetNodeState(StateFollower)
-						go n.RunAsFollower(ctx)
-						return
-					}
+				case <-degradeChan:
+					n.logger.Info("STATE CHANGE: candidate is degraded to follower")
+					go n.RunAsFollower(ctx)
+					return
 				}
 			}
 		}
@@ -235,6 +213,57 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 }
 
 // ---------------------------------------small unit functions for noleader -------------------------------------
+func (n *nodeImpl) candidateHandlePeerRequest(ctx context.Context, workerWaitGroup *sync.WaitGroup, degradeChan chan struct{}) {
+	defer workerWaitGroup.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			n.logger.Info("peer-request-worker, exiting leader's worker for peer requests")
+			return
+		default:
+			select {
+			case <-ctx.Done():
+				n.logger.Info("peer-request-worker, exiting leader's worker for peer requests")
+				return
+			case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
+				if req.IsTimeout.Load() {
+					n.logger.Warn("received a request vote from peers but it is timeout")
+					continue
+				}
+				req.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
+					Resp: n.handleVoteRequest(req.Req),
+					Err:  nil,
+				}
+				// for voteRequest, only when the term is higher,
+				// the node will convert to follower
+				currentTerm := n.getCurrentTerm()
+				if req.Req.Term > currentTerm {
+					n.SetNodeState(StateFollower)
+					close(degradeChan)
+					return
+				}
+			case req := <-n.appendEntryCh: // commonRule: handling appendEntry from a leader which can be stale or new
+				if req.IsTimeout.Load() {
+					n.logger.Warn("append entry is timeout")
+					continue
+				}
+				req.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+					Resp: n.receiveAppendEntriesAsNoLeader(ctx, req.Req),
+					Err:  nil,
+				}
+				// maki: here is a bit tricky compared with voteRequest
+				// but for appendEntry, only the term can be equal or higher
+				currentTerm := n.getCurrentTerm()
+				if req.Req.Term >= currentTerm {
+					n.SetNodeState(StateFollower)
+					close(degradeChan)
+					return
+				}
+			}
+		}
+	}
+}
+
 // noleader-WORKER-2 aside from the apply worker-1
 // this worker is forever looping to handle client commands, should be called in a separate goroutine
 // quits on the context done, and set the waitGroup before return
@@ -361,12 +390,16 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestV
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	consensusChan := make(chan *MajorityRequestVoteResp, 1)
 
+	n.logger.Debug("asyncSendElection: vote for oneself")
 	err := n.updateCurrentTermAndVotedForAsCandidate(false)
 	if err != nil {
 		n.logger.Error(
 			"this shouldn't happen, bugs in updateCurrentTermAndVotedForAsCandidate",
 			zap.String("requestID", requestID), zap.Error(err))
-		close(consensusChan)
+		consensusChan <- &MajorityRequestVoteResp{
+			Err: err,
+		}
+		return consensusChan
 	}
 
 	// todo: testing should be called cancelled 1) the node degrade to folower; 2) the node starts a new election;
@@ -385,7 +418,9 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestV
 		resp, err := n.consensus.ConsensusRequestVote(electionCtx, req)
 		if err != nil {
 			n.logger.Error("asyncSendElection: error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
-			close(consensusChan)
+			consensusChan <- &MajorityRequestVoteResp{
+				Err: err,
+			}
 		} else {
 			n.logger.Debug("asyncSendElection: received a response from the consensus", zap.String("requestID", requestID), zap.Any("resp", resp))
 			consensusChan <- resp

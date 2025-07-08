@@ -94,7 +94,7 @@ func (rc *peerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.Request
 				return nil, common.ContextDoneErr()
 			case resp := <-singleResChan:
 				if resp.Err != nil {
-					rc.logger.Error("need retry, RPC error:",
+					rc.logger.Error("RequestVoteWithRetry: retry on error:",
 						zap.Error(resp.Err),
 						zap.String("requestID", requestID))
 					deadline, ok := ctx.Deadline()
