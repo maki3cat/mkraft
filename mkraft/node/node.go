@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -97,6 +96,8 @@ func NewNode(
 		lastApplied: 0,
 		nextIndex:   make(map[string]uint64, 6),
 		matchIndex:  make(map[string]uint64, 6),
+
+		stateFileLock: &sync.Mutex{},
 	}
 
 	// load persistent state
@@ -130,6 +131,9 @@ type nodeImpl struct {
 	// a RW mutex for all the internal states in this node
 	stateRWLock *sync.RWMutex
 
+	// persistent file's lock
+	stateFileLock *sync.Mutex
+
 	NodeId string // maki: nodeID uuid or number or something else?
 	state  NodeState
 
@@ -159,6 +163,12 @@ type nodeImpl struct {
 	matchIndex map[string]uint64 // map[peerID]matchIndex, index of highest log entry known to be replicated on that server
 }
 
+func (n *nodeImpl) GetKeyState() (uint32, NodeState, string) {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	return n.CurrentTerm, n.state, n.VotedFor
+}
+
 func (n *nodeImpl) GetNodeState() NodeState {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
@@ -166,6 +176,7 @@ func (n *nodeImpl) GetNodeState() NodeState {
 }
 
 func (n *nodeImpl) SetNodeState(state NodeState) {
+	n.logger.Debug("entering SetNodeState")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	if n.state == state {
@@ -175,11 +186,13 @@ func (n *nodeImpl) SetNodeState(state NodeState) {
 		zap.String("nodeID", n.NodeId),
 		zap.String("oldState", n.state.String()),
 		zap.String("newState", state.String()))
-
 	n.state = state
+	n.logger.Debug("exiting SetNodeState")
 }
 
 func (n *nodeImpl) Start(ctx context.Context) {
+	currentTerm, state, votedFor := n.GetKeyState()
+	n.recordNodeState(currentTerm, state, votedFor) // trivial-path
 	go n.RunAsFollower(ctx)
 }
 
@@ -286,72 +299,51 @@ func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVo
 	}
 }
 
-// trivial-path
-// record the node state change history for viewing
-// since it is a trivial-path, we don't let it impact the functions
-func (n *nodeImpl) recordNodeState() {
+// if we don't add currentTerm, nodeId, state, voteFor, we need to acquire the lock for the whole recordNodeState again
+func (n *nodeImpl) recordNodeState(currentTerm uint32, state NodeState, voteFor string) {
+	n.logger.Debug("entering recordNodeState")
 	defer func() {
 		if r := recover(); r != nil {
-			n.logger.Error("panic in recordNodeState, we continue to run", zap.Any("panic", r))
+			n.logger.Error("panic in recordNodeState; continuing", zap.Any("panic", r))
 		}
 	}()
 
-	stateFilePath := getLeaderStateFilePath(n.NodeId, n.cfg.GetDataDir())
-	file, err := os.OpenFile(stateFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	n.stateFileLock.Lock()
+	defer n.stateFileLock.Unlock()
+
+	stateFilePath := getStateFilePath(n.cfg.GetDataDir())
+	file, err := os.OpenFile(
+		stateFilePath,
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0o644,
+	)
 	if err != nil {
-		n.logger.Error("failed to open recordNodeState file, we continue to run", zap.Error(err))
-	} else {
-		defer file.Close()
+		n.logger.Error("open recordNodeState file", zap.Error(err))
+		return // nothing more we can do
+	}
+	defer file.Close()
+
+	entry := serializeNodeStateEntry(currentTerm, n.NodeId, state, voteFor) // e.g. "START#0#…#END\n"
+	if !strings.HasSuffix(entry, "\n") {
+		entry += "\n"
+	}
+	if nBytes, err := file.WriteString(entry); err != nil || nBytes != len(entry) {
+		n.logger.Error("write recordNodeState", zap.Error(err),
+			zap.Int("wrote", nBytes), zap.Int("expected", len(entry)))
+		return
 	}
 
-	term, state := n.getCurrentTerm(), n.GetNodeState()
-	entry := serializeNodeStateEntry(term, n.NodeId, state)
-
-	_, writeErr := file.WriteString(entry)
-	if writeErr != nil {
-		n.logger.Error("failed to append NodeID to recordNodeState file, we continue to run", zap.Error(writeErr))
+	if err := file.Sync(); err != nil {
+		n.logger.Warn("fsync recordNodeState", zap.Error(err))
 	}
+	n.logger.Debug("exiting recordNodeState")
 }
-func serializeNodeStateEntry(term uint32, nodeId string, state NodeState) string {
+
+func serializeNodeStateEntry(term uint32, nodeId string, state NodeState, voteFor string) string {
 	currentTime := time.Now().Format(time.RFC3339)
-	return fmt.Sprintf("%d#%s#%s#%s\n", term, currentTime, nodeId, state)
+	return fmt.Sprintf("#%s, term %d, nodeID %s, state %s, vote for %s#\n", currentTime, term, nodeId, state, voteFor)
 }
 
-func DeserializeNodeStateEntry(entry string) (uint32, string, NodeState, error) {
-	parts := strings.Split(strings.TrimSpace(entry), "#")
-	if len(parts) != 4 {
-		return 0, "", StateFollower, common.ErrCorruptLine
-	}
-
-	term, err := strconv.ParseUint(parts[0], 10, 32)
-	if err != nil {
-		return 0, "", StateFollower, common.ErrCorruptLine
-	}
-
-	nodeId := parts[2]
-
-	var state NodeState
-	switch parts[3] {
-	case "leader":
-		state = StateLeader
-	case "candidate":
-		state = StateCandidate
-	default:
-		state = StateFollower
-	}
-
-	return uint32(term), nodeId, state, nil
-}
-
-const (
-	LeaderStateFileName = "state_%s.mk"
-)
-
-func getLeaderStateFileName(nodeID string) string {
-	return fmt.Sprintf(LeaderStateFileName, nodeID)
-}
-
-func getLeaderStateFilePath(nodeID string, dateDir string) string {
-	stateFileName := getLeaderStateFileName(nodeID)
-	return filepath.Join(dateDir, stateFileName)
+func getStateFilePath(dateDir string) string {
+	return filepath.Join(dateDir, "state_history.mk")
 }

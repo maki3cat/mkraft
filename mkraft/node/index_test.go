@@ -11,7 +11,7 @@ import (
 func TestGetIdxFileName(t *testing.T) {
 	node, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
-	assert.Contains(t, node.getIdxFileName(), "index.rft")
+	assert.Contains(t, node.getIdxFileName(), "index.mk")
 }
 
 func TestUnsafeSaveAndLoadIdx(t *testing.T) {

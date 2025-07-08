@@ -78,7 +78,7 @@ func (n *nodeImpl) noleaderWorkerToApplyLogs(ctx context.Context, workerWaitGrou
 	for {
 		select {
 		case <-ctx.Done():
-			n.logger.Warn("apply-worker, exiting leader's worker for applying commands")
+			n.logger.Info("apply-worker, exiting leader's worker for applying commands")
 			return
 		default:
 			select {
@@ -94,7 +94,7 @@ func (n *nodeImpl) noleaderWorkerToApplyLogs(ctx context.Context, workerWaitGrou
 					n.logger.Error("failed to apply all lagged commited logs", zap.Error(err))
 				}
 			case <-ctx.Done():
-				n.logger.Warn("apply-worker, exiting leader's worker for applying commands")
+				n.logger.Info("apply-worker, exiting leader's worker for applying commands")
 				return
 			}
 		}

@@ -14,7 +14,7 @@ import (
 // if not, if all nodes shutdown, the commitIdx and lastApplied will be lost
 func (n *nodeImpl) getIdxFileName() string {
 	dataDir := n.cfg.GetDataDir()
-	return fmt.Sprintf("%s/index.rft", dataDir)
+	return fmt.Sprintf("%s/index.mk", dataDir)
 }
 
 func (n *nodeImpl) unsafeSaveIdx() error {
@@ -22,7 +22,7 @@ func (n *nodeImpl) unsafeSaveIdx() error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	idxFileName := fmt.Sprintf("%s/index_%s.rft", dir, time.Now().Format("20060102150405"))
+	idxFileName := fmt.Sprintf("%s/index_%s.mk", dir, time.Now().Format("20060102150405"))
 	n.logger.Debug("saving index", zap.String("idxFileName", idxFileName))
 
 	buf := make([]byte, 0, 32)

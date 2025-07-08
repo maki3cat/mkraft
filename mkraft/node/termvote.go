@@ -13,22 +13,39 @@ import (
 	"go.uber.org/zap"
 )
 
-// the Persistent state on all servers: currentTerm, votedFor
-// the logs are managed by RaftLogImpl, which is a separate file
-func (n *nodeImpl) getTermAndVoteForFileName() string {
-	return fmt.Sprintf("termvote_%s.mk", n.NodeId)
+const (
+	TermAndVoteForFileName = "term_votefor.mk"
+)
+
+func serializeTermAndVoteFor(term uint32, voteFor string) string {
+	return fmt.Sprintf("#%d,%s#", term, voteFor)
+}
+
+func deserializeTermAndVoteFor(entry string) (uint32, string, error) {
+	// Remove leading/trailing #
+	entry = strings.Trim(entry, "#")
+
+	parts := strings.Split(entry, ",")
+	if len(parts) != 2 {
+		return 0, "", common.ErrCorruptPersistentFile
+	}
+	term64, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
+	if err != nil {
+		return 0, "", common.ErrCorruptPersistentFile
+	}
+	return uint32(term64), strings.TrimSpace(parts[1]), nil
 }
 
 func (n *nodeImpl) getStateFilePath() string {
 	dir := n.cfg.GetDataDir()
-	return filepath.Join(dir, "state.rft")
+	return filepath.Join(dir, TermAndVoteForFileName)
 }
 
 func (n *nodeImpl) getTmpStateFilePath() string {
 	dir := n.cfg.GetDataDir()
 	formatted := time.Now().Format("20060102150405")
 	numericTimestamp := formatted[:len(formatted)-4] + formatted[len(formatted)-3:]
-	fileName := fmt.Sprintf("%s_%s", n.getTermAndVoteForFileName(), numericTimestamp)
+	fileName := fmt.Sprintf("%s_%s", TermAndVoteForFileName, numericTimestamp)
 	return filepath.Join(dir, fileName)
 }
 
@@ -63,22 +80,12 @@ func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 	if err != nil {
 		return fmt.Errorf("error reading raft state file: %w", err)
 	}
-	parts := strings.Split(string(content), ",")
-	if len(parts) == 0 || len(parts) > 2 {
-		return common.ErrCorruptPersistentFile
-	}
-
-	if len(parts) == 1 {
-		n.VotedFor = ""
-	} else {
-		n.VotedFor = strings.TrimSpace(parts[1])
-	}
-
-	term64, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
+	term, votedFor, err := deserializeTermAndVoteFor(string(content))
 	if err != nil {
-		return common.ErrCorruptPersistentFile
+		return err
 	}
-	n.CurrentTerm = uint32(term64)
+	n.CurrentTerm = term
+	n.VotedFor = votedFor
 	return nil
 }
 
@@ -93,6 +100,7 @@ func (n *nodeImpl) storeCurrentTermAndVotedFor(term uint32, voteFor string, reEn
 		return err
 	}
 	n.CurrentTerm = term
+	// n.recordNodeState(term, n.state, voteFor)
 	return nil
 }
 
@@ -108,6 +116,7 @@ func (n *nodeImpl) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error
 		return err
 	}
 	n.CurrentTerm = term
+	// n.recordNodeState(term, StateCandidate, voteFor)
 	return nil
 }
 
@@ -118,7 +127,8 @@ func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) erro
 		return err
 	}
 
-	_, err = file.WriteString(fmt.Sprintf("%d,%s", term, voteFor))
+	entry := serializeTermAndVoteFor(term, voteFor)
+	_, err = file.WriteString(entry)
 	if err != nil {
 		return err
 	}

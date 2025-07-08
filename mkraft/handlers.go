@@ -28,6 +28,7 @@ func (h *Handlers) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.Hello
 }
 
 func (h *Handlers) RequestVote(ctx context.Context, in *pb.RequestVoteRequest) (*pb.RequestVoteResponse, error) {
+	h.logger.Debug("RequestVote: received a request vote", zap.Any("req", in))
 	requestID := common.GetRequestID(ctx)
 	respChan := make(chan *utils.RPCRespWrapper[*pb.RequestVoteResponse], 1)
 	internalReq := &utils.RequestVoteInternalReq{
@@ -37,6 +38,7 @@ func (h *Handlers) RequestVote(ctx context.Context, in *pb.RequestVoteRequest) (
 	// todo: should send the ctx into raft server so that it can notice the context is done
 	h.node.VoteRequest(internalReq)
 	resp := <-respChan
+	h.logger.Debug("RequestVote: get response from raft server", zap.Any("resp", resp))
 	if resp.Err != nil {
 		h.logger.Error("error in getting response from raft server",
 			zap.Error(resp.Err),
@@ -47,6 +49,7 @@ func (h *Handlers) RequestVote(ctx context.Context, in *pb.RequestVoteRequest) (
 }
 
 func (h *Handlers) AppendEntries(ctx context.Context, in *pb.AppendEntriesRequest) (*pb.AppendEntriesResponse, error) {
+	h.logger.Debug("AppendEntries: received a request vote", zap.Any("req", in))
 	requestID := common.GetRequestID(ctx)
 	respChan := make(chan *utils.RPCRespWrapper[*pb.AppendEntriesResponse], 1)
 	req := &utils.AppendEntriesInternalReq{
@@ -57,6 +60,7 @@ func (h *Handlers) AppendEntries(ctx context.Context, in *pb.AppendEntriesReques
 
 	// todo: should send the ctx into raft server so that it can notice the context is done
 	resp := <-respChan
+	h.logger.Debug("AppendEntries: get response from raft server", zap.Any("resp", resp))
 	if resp.Err != nil {
 		h.logger.Error("error in getting response from raft server",
 			zap.Error(resp.Err),
