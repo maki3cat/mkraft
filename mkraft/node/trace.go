@@ -10,11 +10,15 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	StateTraceFileName = "state_history.mk"
+)
+
 func NewStateTrace(logger *zap.Logger, dataDir string) *stateTrace {
 	trace := &stateTrace{
 		logger:        logger,
 		dataDir:       dataDir,
-		stateFilePath: filepath.Join(dataDir, "state_history.mk"),
+		stateFilePath: filepath.Join(dataDir, StateTraceFileName),
 		queue:         make(chan string, 100),
 	}
 	return trace
@@ -28,28 +32,30 @@ type stateTrace struct {
 }
 
 func (s *stateTrace) start(ctx context.Context) {
-	select {
-	case <-ctx.Done():
-		return
-	default:
+	for {
 		select {
 		case <-ctx.Done():
 			return
-		case entry := <-s.queue:
-			entries := make([]string, 0, 100)
-			entries = append(entries, entry)
-		DRAIN:
-			for {
-				select {
-				case entry := <-s.queue:
-					// take all
-					entries = append(entries, entry)
-				default:
-					break DRAIN
+		default:
+			select {
+			case <-ctx.Done():
+				return
+			case entry := <-s.queue:
+				entries := make([]string, 0, 100)
+				entries = append(entries, entry)
+			DRAIN:
+				for {
+					select {
+					case entry := <-s.queue:
+						// take all
+						entries = append(entries, entry)
+					default:
+						break DRAIN
+					}
 				}
+				s.save(entries)
+				s.logger.Info("saved state trace", zap.Int("count", len(entries)))
 			}
-			s.save(entries)
-			s.logger.Info("saved state trace", zap.Int("count", len(entries)))
 		}
 	}
 }
@@ -71,13 +77,11 @@ func (s *stateTrace) save(lines []string) {
 		return
 	}
 	defer file.Close()
-
 	for _, line := range lines {
 		if _, err := file.WriteString(line); err != nil {
 			s.logger.Error("write recordNodeState", zap.Error(err))
 		}
 	}
-
 	if err := file.Sync(); err != nil {
 		s.logger.Warn("fsync recordNodeState", zap.Error(err))
 	}

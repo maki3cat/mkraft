@@ -93,10 +93,11 @@ func NewNode(
 		matchIndex:  make(map[string]uint64, 6),
 
 		stateFileLock: &sync.Mutex{},
+		tracer:        NewStateTrace(logger, cfg.GetDataDir()),
 	}
 
 	// load persistent state
-	err := node.loadCurrentTermAndVotedFor()
+	err := node.LoadKeyState()
 	if err != nil {
 		node.logger.Error("error loading current term and voted for", zap.Error(err))
 		panic(err)
@@ -156,11 +157,16 @@ type nodeImpl struct {
 	// required, volatile, on leaders only, reinitialized after election, initialized to leader last log index+1
 	nextIndex  map[string]uint64 // map[peerID]nextIndex, index of the next log entry to send to that server
 	matchIndex map[string]uint64 // map[peerID]matchIndex, index of highest log entry known to be replicated on that server
+
+	// tracer
+	tracer *stateTrace
 }
 
 func (n *nodeImpl) Start(ctx context.Context) {
+	go n.tracer.start(ctx)
 	currentTerm, state, votedFor := n.getKeyState()
-	n.recordNodeState(currentTerm, state, votedFor) // trivial-path
+	n.tracer.add(currentTerm, n.NodeId, state, votedFor)
+
 	go n.RunAsFollower(ctx)
 }
 
@@ -232,17 +238,18 @@ func (n *nodeImpl) ClientCommand(req *utils.ClientCommandInternalReq) {
 // Impementation: a node cannot vote for a candidate that has 1) lower term of last log entry, or 2) same term of last log entry but lower index of last log entry.
 // return: (voteGranted, shouldUpdateCurrentTermAndVoteFor)
 func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, newTerm uint32, candidateId string) bool {
+
+	// this should be the state change check and changes should be atomic
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 
 	currentTerm, voteFor := n.CurrentTerm, n.VotedFor
-
 	if currentTerm < newTerm {
 		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
 		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
-			err := n.storeCurrentTermAndVotedFor(newTerm, candidateId, true)
+			err := n.ToFollower(candidateId, newTerm, true)
 			if err != nil {
-				n.logger.Error("error in storeCurrentTermAndVotedFor", zap.Error(err))
+				n.logger.Error("error in ToFollower", zap.Error(err))
 				panic(err)
 			}
 			return true
@@ -250,6 +257,7 @@ func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, n
 			return false
 		}
 	}
+
 	// empty voteFor should not be granted, because it may be learned from the new leader without voting for it
 	if currentTerm == newTerm && voteFor == candidateId {
 		return true
@@ -257,9 +265,13 @@ func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, n
 	return false
 }
 
+// TODO: key problem
+// grant vote changes the state of the node directly
+// if we update the state in this low level, at this function, but update the state in the main loop in other scenarios,
+// this state management will be in a mess
 func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVoteResponse {
 	voteGranted := n.grantVote(req.LastLogIndex, req.LastLogTerm, req.Term, req.CandidateId)
-	currentTerm := n.getCurrentTerm()
+	currentTerm, _, _ := n.getKeyState()
 	return &rpc.RequestVoteResponse{
 		Term: currentTerm,
 		// implementation gap: I think there is no need to differentiate the updated currentTerm or the previous currentTerm

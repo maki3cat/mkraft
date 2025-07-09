@@ -69,9 +69,6 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	n.logger.Info("acquired the Semaphore as the LEADER state")
 	defer n.sem.Release(1)
 
-	currentTerm, state, votedFor := n.getKeyState()
-	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
-
 	// maki: this is a tricky design (the whole design of the log/client command application is tricky)
 	// todo: catch up the log application to make sure lastApplied == commitIndex for the leader
 	n.leaderApplyCh = make(chan *utils.ClientCommandInternalReq, n.cfg.GetRaftNodeRequestBufferSize())
@@ -91,10 +88,6 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 		if singleJobResult.ShallDegrade {
 			n.logger.Info("STATE CHANGE: leader is degraded to follower")
 			subWorkerCancel()
-			n.setNodeState(StateFollower)
-			n.storeCurrentTermAndVotedFor(uint32(singleJobResult.Term), singleJobResult.VotedFor, false)
-			currentTerm, state, votedFor := n.getKeyState()
-			n.recordNodeState(currentTerm, state, votedFor)
 			n.cleanupApplyLogsBeforeToFollower()
 			go n.RunAsFollower(ctx)
 			return

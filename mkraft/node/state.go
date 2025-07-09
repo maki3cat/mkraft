@@ -17,13 +17,57 @@ const (
 	TermAndVoteForFileName = "keystate.mk"
 )
 
-// only serialize the term and voteFor for now
-func serializeTermAndVoteFor(term uint32, voteFor string) string {
+// this is called when the node is a candidate and receives enough votes
+// vote for and term are the same as the candidate's
+func (n *nodeImpl) ToLeader() error {
+	n.logger.Debug("STATE CHANGE: follower timeouts and upgrades to leader")
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	n.state = StateLeader
+	n.tracer.add(n.CurrentTerm, n.NodeId, StateLeader, n.VotedFor)
+	return nil
+}
+
+func (n *nodeImpl) ToCandidate() error {
+	n.logger.Debug("STATE CHANGE: follower timeouts and upgrades to candidate")
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+
+	term := n.CurrentTerm + 1
+	voteFor := n.NodeId
+	err := n.unsafePersistTermAndVoteFor(term, voteFor)
+	if err != nil {
+		return err
+	}
+
+	n.state = StateCandidate
+	n.CurrentTerm = term
+	n.VotedFor = voteFor
+	n.tracer.add(term, n.NodeId, StateCandidate, voteFor)
+	return nil
+}
+
+func (n *nodeImpl) ToFollower(voteFor string, newTerm uint32, reEntrant bool) error {
+	n.logger.Debug("STATE CHANGE: follower votes for another peer.")
+	if !reEntrant {
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
+	n.CurrentTerm = newTerm
+	n.VotedFor = voteFor
+	err := n.unsafePersistTermAndVoteFor(newTerm, voteFor)
+	if err != nil {
+		return err
+	}
+	n.tracer.add(newTerm, n.NodeId, StateFollower, voteFor)
+	return nil
+}
+
+func serializeKeyState(term uint32, voteFor string) string {
 	return fmt.Sprintf("#%d,%s#", term, voteFor)
 }
 
-func deserializeTermAndVoteFor(entry string) (uint32, string, error) {
-	// Remove leading/trailing #
+func deserializeKeyState(entry string) (uint32, string, error) {
 	entry = strings.Trim(entry, "#")
 
 	parts := strings.Split(entry, ",")
@@ -51,7 +95,8 @@ func (n *nodeImpl) getTmpStateFilePath() string {
 }
 
 // load from file system, shall be called at the beginning of the node
-func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
+// but we don't need to load the state from the file system
+func (n *nodeImpl) LoadKeyState() error {
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	path := n.getStateFilePath()
@@ -81,7 +126,7 @@ func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 	if err != nil {
 		return fmt.Errorf("error reading raft state file: %w", err)
 	}
-	term, votedFor, err := deserializeTermAndVoteFor(string(content))
+	term, votedFor, err := deserializeKeyState(string(content))
 	if err != nil {
 		return err
 	}
@@ -97,7 +142,7 @@ func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) erro
 		return err
 	}
 
-	entry := serializeTermAndVoteFor(term, voteFor)
+	entry := serializeKeyState(term, voteFor)
 	_, err = file.WriteString(entry)
 	if err != nil {
 		return err
@@ -123,68 +168,14 @@ func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) erro
 	return nil
 }
 
-// normal read
-func (n *nodeImpl) getCurrentTerm() uint32 {
-	n.stateRWLock.RLock()
-	defer n.stateRWLock.RUnlock()
-	return n.CurrentTerm
-}
-
-func (n *nodeImpl) getNodeState() NodeState {
-	n.stateRWLock.RLock()
-	defer n.stateRWLock.RUnlock()
-	return n.state
-}
-
 func (n *nodeImpl) getKeyState() (uint32, NodeState, string) {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 	return n.CurrentTerm, n.state, n.VotedFor
 }
 
-func (n *nodeImpl) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error {
-	if !reEntrant {
-		n.stateRWLock.Lock()
-		defer n.stateRWLock.Unlock()
-	}
-	term := n.CurrentTerm + 1
-	voteFor := n.NodeId
-	err := n.unsafePersistTermAndVoteFor(term, voteFor)
-	if err != nil {
-		return err
-	}
-	n.CurrentTerm = term
-	return nil
-}
-
-func (n *nodeImpl) setKeyState(term uint32, state NodeState, voteFor string) error {
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
-
-	n.CurrentTerm = term
-	n.state = state
-	n.VotedFor = voteFor
-	err := n.unsafePersistTermAndVoteFor(term, voteFor)
-	if err != nil {
-		return err
-	}
-	// todo: record to be sent to a channel to be sent to perist them
-	// in a batch
-	n.recordNodeState(term, state, voteFor)
-	return nil
-}
-
-func (n *nodeImpl) setNodeState(state NodeState) {
-	n.logger.Debug("entering SetNodeState")
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
-	if n.state == state {
-		return // no change
-	}
-	n.logger.Info("Node state changed",
-		zap.String("nodeID", n.NodeId),
-		zap.String("oldState", n.state.String()),
-		zap.String("newState", state.String()))
-	n.state = state
-	n.logger.Debug("exiting SetNodeState")
+func (n *nodeImpl) getNodeState() NodeState {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	return n.state
 }
