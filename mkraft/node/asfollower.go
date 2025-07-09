@@ -64,7 +64,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					return
 
 				case <-electionTicker.C:
-					err := n.ToCandidate()
+					err := n.ToCandidate(false)
 					if err != nil {
 						n.logger.Error("key error: in fromFollowerToCandidate", zap.Error(err))
 						continue // wait for the next election timeout
@@ -205,4 +205,36 @@ func (n *nodeImpl) updateLogsAsNoLeader(ctx context.Context, req *rpc.AppendEntr
 		logs[idx] = entry.Data
 	}
 	return n.raftLog.UpdateLogsInBatch(ctx, req.PrevLogIndex, logs, req.Term)
+}
+
+// SHARED BY LEADER AND CANDIDATE
+// noleader-WORKER-2 aside from the apply worker-1
+// this worker is forever looping to handle client commands, should be called in a separate goroutine
+// quits on the context done, and set the waitGroup before return
+// maki: the tricky part is that the client command needs NOT to be drained but the apply signal needs to be drained
+func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWaitGroup *sync.WaitGroup) {
+	defer workerWaitGroup.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			n.logger.Info("client-command-worker, exiting leader's worker for client commands")
+			return
+		default:
+			select {
+			case <-ctx.Done():
+				n.logger.Info("client-command-worker, exiting leader's worker for client commands")
+				return
+			case cmd := <-n.leaderApplyCh:
+				n.logger.Info("client-command-worker, received client command")
+				// todo: add delegation to the leader
+				// easy trivial work, can be done in parallel with the main logic, in case this dirty messages interfere with the main logicj
+				cmd.RespChan <- &utils.RPCRespWrapper[*rpc.ClientCommandResponse]{
+					Resp: &rpc.ClientCommandResponse{
+						Result: nil,
+					},
+					Err: common.ErrNotLeader,
+				}
+			}
+		}
+	}
 }

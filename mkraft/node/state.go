@@ -28,10 +28,12 @@ func (n *nodeImpl) ToLeader() error {
 	return nil
 }
 
-func (n *nodeImpl) ToCandidate() error {
+func (n *nodeImpl) ToCandidate(reEntrant bool) error {
 	n.logger.Debug("STATE CHANGE: follower timeouts and upgrades to candidate")
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
+	if !reEntrant {
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
 
 	term := n.CurrentTerm + 1
 	voteFor := n.NodeId

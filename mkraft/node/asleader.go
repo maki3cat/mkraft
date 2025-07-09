@@ -73,26 +73,41 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	// todo: catch up the log application to make sure lastApplied == commitIndex for the leader
 	n.leaderApplyCh = make(chan *utils.ClientCommandInternalReq, n.cfg.GetRaftNodeRequestBufferSize())
 
+	degradeChan := make(chan struct{})
 	subWorkerCtx, subWorkerCancel := context.WithCancel(ctx)
 	defer subWorkerCancel()
 	go n.leaderWorkerForLogApplication(subWorkerCtx)
+	go n.senderForLeader(subWorkerCtx, degradeChan)
+	go n.receiverForLeader(subWorkerCtx, degradeChan)
 
 	heartbeatDuration := n.cfg.GetLeaderHeartbeatPeriod()
 	tickerForHeartbeat := time.NewTicker(heartbeatDuration)
 	defer tickerForHeartbeat.Stop()
-	var singleJobResult JobResult
-	var err error
-
 	for {
-
-		if singleJobResult.ShallDegrade {
-			n.logger.Info("STATE CHANGE: leader is degraded to follower")
-			subWorkerCancel()
-			n.cleanupApplyLogsBeforeToFollower()
-			go n.RunAsFollower(ctx)
+		select {
+		case <-ctx.Done(): // give ctx higher priority
+			n.logger.Warn("raft node main context done, exiting")
 			return
+		default:
+			select {
+			case <-ctx.Done():
+				n.logger.Warn("raft node main context done, exiting")
+				return
+			case <-degradeChan:
+				n.logger.Info("leader is degraded to follower")
+				subWorkerCancel()
+				n.cleanupApplyLogsBeforeToFollower()
+				go n.RunAsFollower(ctx)
+				return
+			}
 		}
+	}
+}
 
+func (n *nodeImpl) senderForLeader(ctx context.Context, degradeChan chan struct{}) {
+	tickerForHeartbeat := time.NewTicker(n.cfg.GetLeaderHeartbeatPeriod())
+	defer tickerForHeartbeat.Stop()
+	for {
 		select {
 		case <-ctx.Done(): // give ctx higher priority
 			n.logger.Warn("raft node main context done, exiting")
@@ -104,36 +119,67 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 				return
 			// task1: send the heartbeat -> as leader, may degrade to follower
 			case <-tickerForHeartbeat.C:
-				tickerForHeartbeat.Reset(heartbeatDuration)
-				singleJobResult, err = n.syncDoHeartbeat(ctx)
+				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
+				singleJobResult, err := n.syncDoHeartbeat(ctx)
 				if err != nil {
 					n.logger.Error("error in sending heartbeat, omit it for next retry", zap.Error(err))
 				}
+				if singleJobResult.ShallDegrade {
+					close(degradeChan)
+					return
+				}
 			// task2: handle the client command, need to change raftlog/state machine -> as leader, may degrade to follower
 			case clientCmd := <-n.clientCommandCh:
-				tickerForHeartbeat.Reset(heartbeatDuration)
+				tickerForHeartbeat.Reset(n.cfg.GetElectionTimeout())
 				batchingSize := n.cfg.GetRaftNodeRequestBufferSize() - 1
 				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
 				clientCommands = append(clientCommands, clientCmd)
-				// todo: filter out all the timeout requests
-				singleJobResult, err = n.syncDoLogReplication(clientCmd.Ctx, clientCommands)
+				singleJobResult, err := n.syncDoLogReplication(clientCmd.Ctx, clientCommands)
 				if err != nil {
 					// todo: as is same with most other panics, temporary solution, shall handle the error properly
 					panic(err)
 				}
+				if singleJobResult.ShallDegrade {
+					close(degradeChan)
+					return
+				}
+			}
+		}
+	}
+}
+
+func (n *nodeImpl) receiverForLeader(ctx context.Context, degradeChan chan struct{}) {
+	for {
+		select {
+		case <-ctx.Done(): // give ctx higher priority
+			n.logger.Warn("raft node main context done, exiting")
+			return
+		default:
+			select {
+			case <-ctx.Done():
+				n.logger.Warn("raft node main context done, exiting")
+				return
 			// task3: handle the requestVoteChan -> as a node, may degrade to follower
 			case internalReq := <-n.requestVoteCh:
-				singleJobResult, err = n.handleRequestVoteAsLeader(internalReq)
+				singleJobResult, err := n.handleRequestVoteAsLeader(internalReq)
 				if err != nil {
 					n.logger.Error("error in handling request vote", zap.Error(err))
 					panic(err)
 				}
+				if singleJobResult.ShallDegrade {
+					close(degradeChan)
+					return
+				}
 			// task4: handle the appendEntryChan, need to change raftlog/state machine -> as a node, may degrade to follower
 			case internalReq := <-n.appendEntryCh:
-				singleJobResult, err = n.handlerAppendEntriesAsLeader(internalReq)
+				singleJobResult, err := n.handlerAppendEntriesAsLeader(internalReq)
 				if err != nil {
 					n.logger.Error("error in handling append entries", zap.Error(err))
 					panic(err)
+				}
+				if singleJobResult.ShallDegrade {
+					close(degradeChan)
+					return
 				}
 			}
 		}
@@ -153,7 +199,7 @@ type JobResult struct {
 // @return: if err is not nil, the caller shall retry
 func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
-	currentTerm := n.getCurrentTerm()
+	currentTerm, _, _ := n.getKeyState()
 	peerNodeIDs, err := n.membership.GetAllPeerNodeIDs()
 	if err != nil {
 		return JobResult{ShallDegrade: false}, err
@@ -219,7 +265,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 
 	var subTasksToWait sync.WaitGroup
 	subTasksToWait.Add(2)
-	currentTerm := n.getCurrentTerm()
+	currentTerm, _, _ := n.getKeyState()
 
 	// prep:
 	// get logs from the raft logs for each client
@@ -271,7 +317,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 				Entries:      append(catchupCommands, newCommands...),
 			}
 		}
-		resp, err := n.consensus.ConsensusAppendEntries(ctx, reqs, n.getCurrentTerm())
+		resp, err := n.consensus.ConsensusAppendEntries(ctx, reqs, currentTerm)
 		respChan <- resp
 		errorChanTask2 <- err
 	}(ctx)
@@ -314,7 +360,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 func (n *nodeImpl) handlerAppendEntriesAsLeader(internalReq *utils.AppendEntriesInternalReq) (JobResult, error) {
 	req := internalReq.Req
 	reqTerm := uint32(req.Term)
-	currentTerm := n.getCurrentTerm()
+	currentTerm, _, _ := n.getKeyState()
 
 	if reqTerm > currentTerm {
 		result := JobResult{ShallDegrade: true, Term: TermRank(reqTerm), VotedFor: "Na"}

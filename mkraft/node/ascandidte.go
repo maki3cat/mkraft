@@ -5,6 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maki3cat/mkraft/common"
+	"github.com/maki3cat/mkraft/mkraft/utils"
+	"github.com/maki3cat/mkraft/rpc"
 	"go.uber.org/zap"
 )
 
@@ -33,15 +36,13 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 	// there is no tikcer in this cancdiate state, and we use this election return as a de facto ticker
 	// the candidate replies on the election to trigger recording of state
 	consensusChan := n.asyncSendElection(ctx)
-	degradeChan := make(chan struct{}) // if the node is degraded to follower, this channel will be closed
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
-	workerWaitGroup.Add(3)
+	workerWaitGroup.Add(2)
 	n.noleaderApplySignalCh = make(chan bool, n.cfg.GetRaftNodeRequestBufferSize())
 	go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
-	go n.candidateHandlePeerRequest(workerCtx, &workerWaitGroup, degradeChan)
 
 	defer func() {
 		n.logger.Info("worker is exiting the candidate state")
@@ -63,20 +64,27 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 		default:
 			{
 				select {
+
 				case <-reElectionTimer.C:
+					// the elect maintains the candidate state and vote for, but changes the term
 					n.logger.Debug("ELECTION: candidate timer fires, starts a new election")
 					consensusChan = n.asyncSendElection(ctx)
 					reElectionTimer.Reset(n.cfg.GetElectionTimeout())
+
 				case <-ctx.Done():
 					n.logger.Warn("raft node's main context done, exiting")
 					return
+
 				case response, ok := <-consensusChan:
+					// the vote granted can change the candidate to leader or follower or stay the same
 					if !ok {
 						panic("consensusChan should never be closed")
 					}
 					reElectionTimer.Reset(n.cfg.GetElectionTimeout())
 					if response.Err != nil {
-						n.logger.Error("error in consensusChan, try to re-elect after another election timeout", zap.Error(response.Err))
+						n.logger.Error(
+							"candidate has error in election, try to re-elect after another election timeout",
+							zap.Error(response.Err))
 						continue
 					}
 					if response.VoteGranted {
@@ -101,12 +109,101 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 							consensusChan = n.asyncSendElection(ctx)
 						}
 					}
-				case <-degradeChan:
-					n.logger.Info("STATE CHANGE: candidate is degraded to follower")
-					go n.RunAsFollower(ctx)
-					return
+
+				// if we separate these from the main loop, we need to test asyncSendElection checks the state
+				case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
+					if req.IsTimeout.Load() {
+						n.logger.Warn("received a request vote from peers but it is timeout")
+						continue
+					}
+					resp := n.handleVoteRequestAsNoLeader(req.Req) // state changed inside
+					req.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
+						Resp: resp,
+						Err:  nil,
+					}
+					if resp.VoteGranted {
+						go n.RunAsFollower(ctx)
+						return
+					}
+
+				case req := <-n.appendEntryCh: // commonRule: handling appendEntry from a leader which can be stale or new
+					if req.IsTimeout.Load() {
+						n.logger.Warn("append entry is timeout")
+						continue
+					}
+					resp := n.receiveAppendEntriesAsNoLeader(ctx, req.Req)
+					req.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+						Resp: resp,
+						Err:  nil,
+					}
+					// if the state if follower just degrade
+					if n.getNodeState() == StateFollower {
+						go n.RunAsFollower(ctx)
+						return
+					}
 				}
 			}
 		}
 	}
+}
+
+// Specifical Rule for Candidate Election:
+// (1) increment currentTerm
+// (2) vote for self
+// (3) send RequestVote RPCs to all other servers
+// if votes received from majority of servers: become leader
+// if AppendEntries RPC received from new leader: convert to follower
+// if election timeout elapses: start new election
+// error handling:
+// This function closes the channel when there is and error, and should be returned
+func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestVoteResp {
+
+	ctx, requestID := common.GetOrGenerateRequestID(ctx)
+	consensusChan := make(chan *MajorityRequestVoteResp, 1)
+
+	// check if the node is degraded to follower
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	term, state, _ := n.getKeyState()
+	if state == StateFollower {
+		consensusChan <- &MajorityRequestVoteResp{
+			Err: common.ErrNotCandidate, // todo: test case for this one
+		}
+		return consensusChan
+	} else {
+		err := n.ToCandidate(true)
+		if err != nil {
+			n.logger.Error("asyncSendElection: error in ToCandidate", zap.String("requestID", requestID), zap.Error(err))
+			consensusChan <- &MajorityRequestVoteResp{
+				Err: err,
+			}
+			return consensusChan
+		}
+	}
+
+	// todo: testing should be called cancelled 1) the node degrade to folower; 2) the node starts a new election;
+	timeout := n.cfg.GetElectionTimeout()
+	n.logger.Debug("async election timeout", zap.Duration("timeout", timeout))
+	electionCtx, _ := context.WithTimeout(ctx, timeout)
+	// defer electionCancel() // this is not needed, because the ConsensusRequestVote is a shortcut method
+	// and the ctx is called cancelled when the candidate shall degrade to follower
+
+	go func() {
+		req := &rpc.RequestVoteRequest{
+			Term:        term,
+			CandidateId: n.NodeId,
+		}
+		n.logger.Debug("asyncSendElection: sending a request vote to the consensus", zap.String("requestID", requestID), zap.Any("req", req))
+		resp, err := n.consensus.ConsensusRequestVote(electionCtx, req)
+		if err != nil {
+			n.logger.Error("asyncSendElection: error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
+			consensusChan <- &MajorityRequestVoteResp{
+				Err: err,
+			}
+		} else {
+			n.logger.Debug("asyncSendElection: received a response from the consensus", zap.String("requestID", requestID), zap.Any("resp", resp))
+			consensusChan <- resp
+		}
+	}()
+	return consensusChan
 }
