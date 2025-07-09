@@ -27,7 +27,7 @@ the control flow of the FOLLOWER is :
 */
 func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 
-	if n.GetNodeState() != StateFollower {
+	if n.getNodeState() != StateFollower {
 		panic("node is not in FOLLOWER state")
 	}
 	n.logger.Info("STATE CHANGE: node acquires to run in FOLLOWER state")
@@ -65,7 +65,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 
 				case <-electionTicker.C:
 					n.logger.Debug("STATE CHANGE: follower timeouts and upgrades to candidate")
-					n.SetNodeState(StateCandidate)
+					n.setNodeState(StateCandidate)
 					go n.RunAsCandidate(ctx)
 					return
 
@@ -77,7 +77,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					}
 					resp := n.handleVoteRequest(requestVoteInternal.Req)
 					if resp.VoteGranted {
-						currentTerm, state, votedFor := n.GetKeyState()
+						currentTerm, state, votedFor := n.getKeyState()
 						n.recordNodeState(currentTerm, state, votedFor)
 					}
 					wrappedResp := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
@@ -120,7 +120,7 @@ the control flow of the FOLLOWER is :
 */
 func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 
-	if n.GetNodeState() != StateCandidate {
+	if n.getNodeState() != StateCandidate {
 		panic("node is not in CANDIDATE state")
 	}
 
@@ -178,7 +178,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 						continue
 					}
 					if response.VoteGranted {
-						n.SetNodeState(StateLeader)
+						n.setNodeState(StateLeader)
 						n.cleanupApplyLogsBeforeToLeader()
 						n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
 						go n.RunAsLeader(ctx)
@@ -192,7 +192,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 									zap.String("nId", n.NodeId))
 								panic(err) // todo: error handling
 							}
-							n.SetNodeState(StateFollower)
+							n.setNodeState(StateFollower)
 							n.logger.Info("STATE CHANGE: candidate is degraded to follower")
 							go n.RunAsFollower(ctx)
 							return
@@ -239,8 +239,8 @@ func (n *nodeImpl) candidateHandlePeerRequest(ctx context.Context, workerWaitGro
 				// the node will convert to follower
 				currentTerm := n.getCurrentTerm()
 				if req.Req.Term > currentTerm {
-					n.SetNodeState(StateFollower)
-					currentTerm, state, votedFor := n.GetKeyState()
+					n.setNodeState(StateFollower)
+					currentTerm, state, votedFor := n.getKeyState()
 					n.recordNodeState(currentTerm, state, votedFor)
 					close(degradeChan)
 					return
@@ -258,8 +258,8 @@ func (n *nodeImpl) candidateHandlePeerRequest(ctx context.Context, workerWaitGro
 				// but for appendEntry, only the term can be equal or higher
 				currentTerm := n.getCurrentTerm()
 				if req.Req.Term >= currentTerm {
-					n.SetNodeState(StateFollower)
-					currentTerm, state, votedFor := n.GetKeyState()
+					n.setNodeState(StateFollower)
+					currentTerm, state, votedFor := n.getKeyState()
 					n.recordNodeState(currentTerm, state, votedFor)
 					close(degradeChan)
 					return
@@ -371,7 +371,7 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 
 // Property: Leader Append-only
 func (n *nodeImpl) wrappedUpdateLogsInBatch(ctx context.Context, req *rpc.AppendEntriesRequest) error {
-	if n.GetNodeState() == StateLeader {
+	if n.getNodeState() == StateLeader {
 		panic("violation of Leader Append-only property: leader cannot call UpdateLogsInBatch")
 	}
 	logs := make([][]byte, len(req.Entries))

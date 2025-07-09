@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	TermAndVoteForFileName = "term_votefor.mk"
+	TermAndVoteForFileName = "keystate.mk"
 )
 
+// only serialize the term and voteFor for now
 func serializeTermAndVoteFor(term uint32, voteFor string) string {
 	return fmt.Sprintf("#%d,%s#", term, voteFor)
 }
@@ -89,37 +90,6 @@ func (n *nodeImpl) loadCurrentTermAndVotedFor() error {
 	return nil
 }
 
-// store to file system, shall be called when the term or votedFor changes
-func (n *nodeImpl) storeCurrentTermAndVotedFor(term uint32, voteFor string, reEntrant bool) error {
-	if !reEntrant {
-		n.stateRWLock.Lock()
-		defer n.stateRWLock.Unlock()
-	}
-	err := n.unsafePersistTermAndVoteFor(term, voteFor)
-	if err != nil {
-		return err
-	}
-	n.CurrentTerm = term
-	// n.recordNodeState(term, n.state, voteFor)
-	return nil
-}
-
-func (n *nodeImpl) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error {
-	if !reEntrant {
-		n.stateRWLock.Lock()
-		defer n.stateRWLock.Unlock()
-	}
-	term := n.CurrentTerm + 1
-	voteFor := n.NodeId
-	err := n.unsafePersistTermAndVoteFor(term, voteFor)
-	if err != nil {
-		return err
-	}
-	n.CurrentTerm = term
-	// n.recordNodeState(term, StateCandidate, voteFor)
-	return nil
-}
-
 func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) error {
 	path := n.getTmpStateFilePath()
 	file, err := os.Create(path)
@@ -158,4 +128,63 @@ func (n *nodeImpl) getCurrentTerm() uint32 {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 	return n.CurrentTerm
+}
+
+func (n *nodeImpl) getNodeState() NodeState {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	return n.state
+}
+
+func (n *nodeImpl) getKeyState() (uint32, NodeState, string) {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	return n.CurrentTerm, n.state, n.VotedFor
+}
+
+func (n *nodeImpl) updateCurrentTermAndVotedForAsCandidate(reEntrant bool) error {
+	if !reEntrant {
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
+	term := n.CurrentTerm + 1
+	voteFor := n.NodeId
+	err := n.unsafePersistTermAndVoteFor(term, voteFor)
+	if err != nil {
+		return err
+	}
+	n.CurrentTerm = term
+	return nil
+}
+
+func (n *nodeImpl) setKeyState(term uint32, state NodeState, voteFor string) error {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+
+	n.CurrentTerm = term
+	n.state = state
+	n.VotedFor = voteFor
+	err := n.unsafePersistTermAndVoteFor(term, voteFor)
+	if err != nil {
+		return err
+	}
+	// todo: record to be sent to a channel to be sent to perist them
+	// in a batch
+	n.recordNodeState(term, state, voteFor)
+	return nil
+}
+
+func (n *nodeImpl) setNodeState(state NodeState) {
+	n.logger.Debug("entering SetNodeState")
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	if n.state == state {
+		return // no change
+	}
+	n.logger.Info("Node state changed",
+		zap.String("nodeID", n.NodeId),
+		zap.String("oldState", n.state.String()),
+		zap.String("newState", state.String()))
+	n.state = state
+	n.logger.Debug("exiting SetNodeState")
 }

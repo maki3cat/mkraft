@@ -23,7 +23,7 @@ func TestNode_RunAsFollower_HappyPath(t *testing.T) {
 	n, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
 
-	n.SetNodeState(StateFollower)
+	n.setNodeState(StateFollower)
 	n.sem = semaphore.NewWeighted(1)
 	n.sem.Acquire(context.Background(), 1) // Initialize with 1 permit
 
@@ -54,7 +54,7 @@ func TestNode_RunAsFollower_WrongState(t *testing.T) {
 	n, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
 
-	n.SetNodeState(StateLeader)
+	n.setNodeState(StateLeader)
 
 	assert.Panics(t, func() {
 		n.RunAsFollower(context.Background())
@@ -67,7 +67,7 @@ func TestNode_RunAsCandidate_HappyPath(t *testing.T) {
 	n, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
 
-	n.SetNodeState(StateCandidate)
+	n.setNodeState(StateCandidate)
 	n.sem = semaphore.NewWeighted(1)
 	n.sem.Acquire(context.Background(), 1) // Initialize with 1 permit
 
@@ -104,7 +104,7 @@ func TestNode_RunAsCandidate_WrongState(t *testing.T) {
 	n, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
 
-	n.SetNodeState(StateLeader)
+	n.setNodeState(StateLeader)
 
 	assert.Panics(t, func() {
 		n.RunAsCandidate(context.Background())
@@ -116,7 +116,7 @@ func TestNode_RunAsCandidate_WrongState(t *testing.T) {
 func TestNode_wrappedUpdateLogsInBatch_Leader(t *testing.T) {
 	n, ctrl := newMockNode(t)
 	defer cleanUpTmpDir(ctrl)
-	n.SetNodeState(StateLeader)
+	n.setNodeState(StateLeader)
 	assert.Panics(t, func() {
 		n.wrappedUpdateLogsInBatch(context.Background(), &rpc.AppendEntriesRequest{
 			PrevLogIndex: 0,
@@ -131,7 +131,7 @@ func TestNode_wrappedUpdateLogsInBatch_Follower(t *testing.T) {
 	defer cleanUpTmpDir(ctrl)
 	raftLog := n.raftLog.(*log.MockRaftLogs)
 	raftLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	n.SetNodeState(StateFollower)
+	n.setNodeState(StateFollower)
 	err := n.wrappedUpdateLogsInBatch(context.Background(), &rpc.AppendEntriesRequest{
 		PrevLogIndex: 0,
 		PrevLogTerm:  0,
@@ -145,7 +145,7 @@ func TestNode_wrappedUpdateLogsInBatch_Candidate(t *testing.T) {
 	defer cleanUpTmpDir(ctrl)
 	raftLog := n.raftLog.(*log.MockRaftLogs)
 	raftLog.EXPECT().UpdateLogsInBatch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	n.SetNodeState(StateCandidate)
+	n.setNodeState(StateCandidate)
 	err := n.wrappedUpdateLogsInBatch(context.Background(), &rpc.AppendEntriesRequest{
 		PrevLogIndex: 0,
 		PrevLogTerm:  0,

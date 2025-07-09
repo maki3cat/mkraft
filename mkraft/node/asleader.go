@@ -61,7 +61,7 @@ func (n *nodeImpl) RunAsLeader(ctx context.Context) {
 // the only worker thread needed is the log applicaiton thread
 func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 
-	if n.GetNodeState() != StateLeader {
+	if n.getNodeState() != StateLeader {
 		panic("node is not in LEADER state")
 	}
 	n.logger.Info("acquiring the Semaphore as the LEADER state")
@@ -69,7 +69,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	n.logger.Info("acquired the Semaphore as the LEADER state")
 	defer n.sem.Release(1)
 
-	currentTerm, state, votedFor := n.GetKeyState()
+	currentTerm, state, votedFor := n.getKeyState()
 	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
 
 	// maki: this is a tricky design (the whole design of the log/client command application is tricky)
@@ -91,9 +91,9 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 		if singleJobResult.ShallDegrade {
 			n.logger.Info("STATE CHANGE: leader is degraded to follower")
 			subWorkerCancel()
-			n.SetNodeState(StateFollower)
+			n.setNodeState(StateFollower)
 			n.storeCurrentTermAndVotedFor(uint32(singleJobResult.Term), singleJobResult.VotedFor, false)
-			currentTerm, state, votedFor := n.GetKeyState()
+			currentTerm, state, votedFor := n.getKeyState()
 			n.recordNodeState(currentTerm, state, votedFor)
 			n.cleanupApplyLogsBeforeToFollower()
 			go n.RunAsFollower(ctx)
