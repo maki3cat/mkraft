@@ -40,7 +40,7 @@ clean:
 	rm bin/*
 	rm *.log *.pid
 
-test-nodes: build
+integration-test: build
 	echo "Clearning up the node data..."
 	rm -rf ./data/node1/*
 	rm -rf ./data/node2/*
@@ -59,3 +59,7 @@ test-nodes: build
 	rm -f ./data/node1/node.pid ./data/node2/node.pid ./data/node3/node.pid
 	@ps aux | grep "mkraft"
 	echo "All nodes stopped"
+
+verification:
+	echo "verifying leader safety"
+	go run verify/leadersafety.go data/node1/state_history.mk data/node2/state_history.mk data/node3/state_history.mk 

@@ -14,7 +14,6 @@ import (
 )
 
 // ---------------------------------------CONTROL FLOW: THE LEADER-------------------------------------
-
 /*
 SECTION1: THE COMMON RULE (paper)
 If any RPC request or response is received from a server with a higher term,
@@ -61,7 +60,7 @@ func (n *nodeImpl) RunAsLeader(ctx context.Context) {
 // the only worker thread needed is the log applicaiton thread
 func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 
-	if n.GetNodeState() != StateLeader {
+	if n.getNodeState() != StateLeader {
 		panic("node is not in LEADER state")
 	}
 	n.logger.Info("acquiring the Semaphore as the LEADER state")
@@ -69,37 +68,49 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	n.logger.Info("acquired the Semaphore as the LEADER state")
 	defer n.sem.Release(1)
 
-	currentTerm, state, votedFor := n.GetKeyState()
-	go n.recordNodeState(currentTerm, state, votedFor) // trivial-path
-
 	// maki: this is a tricky design (the whole design of the log/client command application is tricky)
 	// todo: catch up the log application to make sure lastApplied == commitIndex for the leader
 	n.leaderApplyCh = make(chan *utils.ClientCommandInternalReq, n.cfg.GetRaftNodeRequestBufferSize())
 
+	degradeChan := make(chan struct{})
 	subWorkerCtx, subWorkerCancel := context.WithCancel(ctx)
 	defer subWorkerCancel()
-	go n.leaderWorkerForLogApplication(subWorkerCtx)
 
-	heartbeatDuration := n.cfg.GetLeaderHeartbeatPeriod()
-	tickerForHeartbeat := time.NewTicker(heartbeatDuration)
-	defer tickerForHeartbeat.Stop()
-	var singleJobResult JobResult
-	var err error
+	waitGroup := sync.WaitGroup{}
+	waitGroup.Add(3)
+	go n.leaderSendWorker(subWorkerCtx, degradeChan, &waitGroup)
+	go n.leaderReceiverWorker(subWorkerCtx, degradeChan, &waitGroup)
+	go n.leaderLogApplyWorker(subWorkerCtx, &waitGroup)
 
 	for {
-
-		if singleJobResult.ShallDegrade {
-			n.logger.Info("STATE CHANGE: leader is degraded to follower")
-			subWorkerCancel()
-			n.SetNodeState(StateFollower)
-			n.storeCurrentTermAndVotedFor(uint32(singleJobResult.Term), singleJobResult.VotedFor, false)
-			currentTerm, state, votedFor := n.GetKeyState()
-			n.recordNodeState(currentTerm, state, votedFor)
-			n.cleanupApplyLogsBeforeToFollower()
-			go n.RunAsFollower(ctx)
+		select {
+		case <-ctx.Done():
+			n.logger.Warn("raft node main context done, exiting")
 			return
+		default:
+			select {
+			case <-ctx.Done():
+				n.logger.Warn("raft node main context done, exiting")
+				return
+			case <-degradeChan:
+				subWorkerCancel()
+				waitGroup.Wait()
+				go n.RunAsFollower(ctx)
+				return
+			}
 		}
+	}
+}
 
+// sender is named from the perspective of sending request to other nodes
+// receiving the client commands triggers sending so put in the same worker
+func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct{}, workerWaitGroup *sync.WaitGroup) {
+	defer workerWaitGroup.Done()
+	defer n.cleanupApplyLogsBeforeToFollower()
+
+	tickerForHeartbeat := time.NewTicker(n.cfg.GetLeaderHeartbeatPeriod())
+	defer tickerForHeartbeat.Stop()
+	for {
 		select {
 		case <-ctx.Done(): // give ctx higher priority
 			n.logger.Warn("raft node main context done, exiting")
@@ -111,36 +122,68 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 				return
 			// task1: send the heartbeat -> as leader, may degrade to follower
 			case <-tickerForHeartbeat.C:
-				tickerForHeartbeat.Reset(heartbeatDuration)
-				singleJobResult, err = n.syncDoHeartbeat(ctx)
+				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
+				singleJobResult, err := n.syncDoHeartbeat(ctx)
 				if err != nil {
 					n.logger.Error("error in sending heartbeat, omit it for next retry", zap.Error(err))
 				}
+				if singleJobResult.ShallDegrade {
+					close(degradeChan)
+					return
+				}
 			// task2: handle the client command, need to change raftlog/state machine -> as leader, may degrade to follower
 			case clientCmd := <-n.clientCommandCh:
-				tickerForHeartbeat.Reset(heartbeatDuration)
+				tickerForHeartbeat.Reset(n.cfg.GetElectionTimeout())
 				batchingSize := n.cfg.GetRaftNodeRequestBufferSize() - 1
 				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
 				clientCommands = append(clientCommands, clientCmd)
-				// todo: filter out all the timeout requests
-				singleJobResult, err = n.syncDoLogReplication(clientCmd.Ctx, clientCommands)
+				singleJobResult, err := n.syncDoLogReplication(clientCmd.Ctx, clientCommands)
 				if err != nil {
 					// todo: as is same with most other panics, temporary solution, shall handle the error properly
 					panic(err)
 				}
-			// task3: handle the requestVoteChan -> as a node, may degrade to follower
+				if singleJobResult.ShallDegrade {
+					close(degradeChan)
+					return
+				}
+			}
+		}
+	}
+}
+
+// receiver is named from the perspective of receiving request from other nodes
+// not receiving from clients
+func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan struct{}, workerWaitGroup *sync.WaitGroup) {
+	defer workerWaitGroup.Done()
+	for {
+		select {
+		case <-ctx.Done(): // give ctx higher priority
+			n.logger.Warn("raft node main context done, exiting")
+			return
+		default:
+			select {
+			case <-ctx.Done():
+				n.logger.Warn("raft node main context done, exiting")
+				return
 			case internalReq := <-n.requestVoteCh:
-				singleJobResult, err = n.handleRequestVoteAsLeader(internalReq)
+				singleJobResult, err := n.handleRequestVoteAsLeader(internalReq)
 				if err != nil {
 					n.logger.Error("error in handling request vote", zap.Error(err))
 					panic(err)
 				}
-			// task4: handle the appendEntryChan, need to change raftlog/state machine -> as a node, may degrade to follower
+				if singleJobResult.ShallDegrade {
+					close(degradeChan)
+					return
+				}
 			case internalReq := <-n.appendEntryCh:
-				singleJobResult, err = n.handlerAppendEntriesAsLeader(internalReq)
+				singleJobResult, err := n.handlerAppendEntriesAsLeader(internalReq)
 				if err != nil {
 					n.logger.Error("error in handling append entries", zap.Error(err))
 					panic(err)
+				}
+				if singleJobResult.ShallDegrade {
+					close(degradeChan)
+					return
 				}
 			}
 		}
@@ -160,7 +203,7 @@ type JobResult struct {
 // @return: if err is not nil, the caller shall retry
 func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
-	currentTerm := n.getCurrentTerm()
+	currentTerm, _, _ := n.getKeyState()
 	peerNodeIDs, err := n.membership.GetAllPeerNodeIDs()
 	if err != nil {
 		return JobResult{ShallDegrade: false}, err
@@ -226,7 +269,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 
 	var subTasksToWait sync.WaitGroup
 	subTasksToWait.Add(2)
-	currentTerm := n.getCurrentTerm()
+	currentTerm, _, _ := n.getKeyState()
 
 	// prep:
 	// get logs from the raft logs for each client
@@ -278,7 +321,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 				Entries:      append(catchupCommands, newCommands...),
 			}
 		}
-		resp, err := n.consensus.ConsensusAppendEntries(ctx, reqs, n.getCurrentTerm())
+		resp, err := n.consensus.ConsensusAppendEntries(ctx, reqs, currentTerm)
 		respChan <- resp
 		errorChanTask2 <- err
 	}(ctx)
@@ -321,7 +364,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 func (n *nodeImpl) handlerAppendEntriesAsLeader(internalReq *utils.AppendEntriesInternalReq) (JobResult, error) {
 	req := internalReq.Req
 	reqTerm := uint32(req.Term)
-	currentTerm := n.getCurrentTerm()
+	currentTerm, _, _ := n.getKeyState()
 
 	if reqTerm > currentTerm {
 		result := JobResult{ShallDegrade: true, Term: TermRank(reqTerm), VotedFor: "Na"}

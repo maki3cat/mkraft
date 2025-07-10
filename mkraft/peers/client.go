@@ -29,6 +29,8 @@ type PeerClient interface {
 	// currently, the retry logic is simpler for append entries that we retry 3 times
 	AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error)
 
+	GetNodeID() string
+
 	Close() error
 }
 
@@ -64,6 +66,10 @@ func NewPeerClientImpl(
 	client.conn = conn
 	client.rawClient = rpc.NewRaftServiceClient(conn)
 	return client, nil
+}
+
+func (rc *peerClient) GetNodeID() string {
+	return rc.nodeId
 }
 
 func (rc *peerClient) Close() error {

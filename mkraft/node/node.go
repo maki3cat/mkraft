@@ -2,12 +2,7 @@ package node
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/log"
@@ -98,10 +93,11 @@ func NewNode(
 		matchIndex:  make(map[string]uint64, 6),
 
 		stateFileLock: &sync.Mutex{},
+		tracer:        NewStateTrace(logger, cfg.GetDataDir()),
 	}
 
 	// load persistent state
-	err := node.loadCurrentTermAndVotedFor()
+	err := node.LoadKeyState()
 	if err != nil {
 		node.logger.Error("error loading current term and voted for", zap.Error(err))
 		panic(err)
@@ -161,38 +157,16 @@ type nodeImpl struct {
 	// required, volatile, on leaders only, reinitialized after election, initialized to leader last log index+1
 	nextIndex  map[string]uint64 // map[peerID]nextIndex, index of the next log entry to send to that server
 	matchIndex map[string]uint64 // map[peerID]matchIndex, index of highest log entry known to be replicated on that server
-}
 
-func (n *nodeImpl) GetKeyState() (uint32, NodeState, string) {
-	n.stateRWLock.RLock()
-	defer n.stateRWLock.RUnlock()
-	return n.CurrentTerm, n.state, n.VotedFor
-}
-
-func (n *nodeImpl) GetNodeState() NodeState {
-	n.stateRWLock.RLock()
-	defer n.stateRWLock.RUnlock()
-	return n.state
-}
-
-func (n *nodeImpl) SetNodeState(state NodeState) {
-	n.logger.Debug("entering SetNodeState")
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
-	if n.state == state {
-		return // no change
-	}
-	n.logger.Info("Node state changed",
-		zap.String("nodeID", n.NodeId),
-		zap.String("oldState", n.state.String()),
-		zap.String("newState", state.String()))
-	n.state = state
-	n.logger.Debug("exiting SetNodeState")
+	// tracer
+	tracer *stateTrace
 }
 
 func (n *nodeImpl) Start(ctx context.Context) {
-	currentTerm, state, votedFor := n.GetKeyState()
-	n.recordNodeState(currentTerm, state, votedFor) // trivial-path
+	go n.tracer.start(ctx)
+	currentTerm, state, votedFor := n.getKeyState()
+	n.tracer.add(currentTerm, n.NodeId, state, votedFor)
+
 	go n.RunAsFollower(ctx)
 }
 
@@ -231,7 +205,7 @@ func (n *nodeImpl) AppendEntryRequest(req *utils.AppendEntriesInternalReq) {
 
 // todo: shall add the feature of "redirection to the leader"
 func (n *nodeImpl) ClientCommand(req *utils.ClientCommandInternalReq) {
-	if n.GetNodeState() != StateLeader {
+	if n.getNodeState() != StateLeader {
 		n.logger.Warn("Client command received but node is not a leader, dropping request",
 			zap.String("nodeID", n.NodeId))
 		req.RespChan <- &utils.RPCRespWrapper[*rpc.ClientCommandResponse]{
@@ -264,17 +238,18 @@ func (n *nodeImpl) ClientCommand(req *utils.ClientCommandInternalReq) {
 // Impementation: a node cannot vote for a candidate that has 1) lower term of last log entry, or 2) same term of last log entry but lower index of last log entry.
 // return: (voteGranted, shouldUpdateCurrentTermAndVoteFor)
 func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, newTerm uint32, candidateId string) bool {
+
+	// this should be the state change check and changes should be atomic
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 
 	currentTerm, voteFor := n.CurrentTerm, n.VotedFor
-
 	if currentTerm < newTerm {
 		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
 		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
-			err := n.storeCurrentTermAndVotedFor(newTerm, candidateId, true)
+			err := n.ToFollower(candidateId, newTerm, true)
 			if err != nil {
-				n.logger.Error("error in storeCurrentTermAndVotedFor", zap.Error(err))
+				n.logger.Error("error in ToFollower", zap.Error(err))
 				panic(err)
 			}
 			return true
@@ -282,6 +257,7 @@ func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, n
 			return false
 		}
 	}
+
 	// empty voteFor should not be granted, because it may be learned from the new leader without voting for it
 	if currentTerm == newTerm && voteFor == candidateId {
 		return true
@@ -289,61 +265,16 @@ func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, n
 	return false
 }
 
+// TODO: key problem
+// grant vote changes the state of the node directly
+// if we update the state in this low level, at this function, but update the state in the main loop in other scenarios,
+// this state management will be in a mess
 func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVoteResponse {
 	voteGranted := n.grantVote(req.LastLogIndex, req.LastLogTerm, req.Term, req.CandidateId)
-	currentTerm := n.getCurrentTerm()
+	currentTerm, _, _ := n.getKeyState()
 	return &rpc.RequestVoteResponse{
 		Term: currentTerm,
 		// implementation gap: I think there is no need to differentiate the updated currentTerm or the previous currentTerm
 		VoteGranted: voteGranted,
 	}
-}
-
-// if we don't add currentTerm, nodeId, state, voteFor, we need to acquire the lock for the whole recordNodeState again
-func (n *nodeImpl) recordNodeState(currentTerm uint32, state NodeState, voteFor string) {
-	n.logger.Debug("entering recordNodeState")
-	defer func() {
-		if r := recover(); r != nil {
-			n.logger.Error("panic in recordNodeState; continuing", zap.Any("panic", r))
-		}
-	}()
-
-	n.stateFileLock.Lock()
-	defer n.stateFileLock.Unlock()
-
-	stateFilePath := getStateFilePath(n.cfg.GetDataDir())
-	file, err := os.OpenFile(
-		stateFilePath,
-		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
-		0o644,
-	)
-	if err != nil {
-		n.logger.Error("open recordNodeState file", zap.Error(err))
-		return // nothing more we can do
-	}
-	defer file.Close()
-
-	entry := serializeNodeStateEntry(currentTerm, n.NodeId, state, voteFor) // e.g. "START#0#…#END\n"
-	if !strings.HasSuffix(entry, "\n") {
-		entry += "\n"
-	}
-	if nBytes, err := file.WriteString(entry); err != nil || nBytes != len(entry) {
-		n.logger.Error("write recordNodeState", zap.Error(err),
-			zap.Int("wrote", nBytes), zap.Int("expected", len(entry)))
-		return
-	}
-
-	if err := file.Sync(); err != nil {
-		n.logger.Warn("fsync recordNodeState", zap.Error(err))
-	}
-	n.logger.Debug("exiting recordNodeState")
-}
-
-func serializeNodeStateEntry(term uint32, nodeId string, state NodeState, voteFor string) string {
-	currentTime := time.Now().Format(time.RFC3339)
-	return fmt.Sprintf("#%s, term %d, nodeID %s, state %s, vote for %s#\n", currentTime, term, nodeId, state, voteFor)
-}
-
-func getStateFilePath(dateDir string) string {
-	return filepath.Join(dateDir, "state_history.mk")
 }
