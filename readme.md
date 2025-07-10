@@ -1,33 +1,29 @@
 [![Test and Coverage](https://github.com/maki3cat/mkraft/actions/workflows/test-coverage.yml/badge.svg?branch=main)](https://github.com/maki3cat/mkraft/actions/workflows/test-coverage.yml)
 
+This is a Work-In-Progress Project.
+
 ## What this Project is About
-This project is a Raft implementation that aims for an almost-industry-level standard while also serving educational purposes by demonstrating how to implement a system paper.
 
-- "Industry-level": This refers to its focus on clean, maintainable code, performance-oriented designs, and sophisticated testing for rigorous proof.
-- "Almost": This qualification is due to the fact that the implementation has not yet been deployed or proven in a real-world industry setting.
-- "Educational": Its educational purpose is fulfilled by mapping the implementation directly to the paper's design, while also highlighting the gaps and trade-offs between the theoretical model and practical implementation decisions. 
-
+A Raft implementation:
+- to be built frirst Toy then Industry level;
+- to systematically explores and presents what the **GAPS Paper/Theoretical Modeling and Implementation Modeling/Coding(toy/industry)**;
+- to investigate the **TESTING** for a complicated system project; the torturing moments are all about the testing yet I still feel unconfident;
+- to find some new **INNOVATION** possiblity for this old protocol;
+- **EDUCATION** purpose to help navigate colledge students from small labs to real project; and also show what college students can do;
 
 <img src="img/logo.jpg" alt="My Image" align="right" width="250">
 
 
-## News
+## What I am currently Doing
 
-What I am currently working on Testing
-- build a local-CICD for the purpose of integrated/performance testing (docker-compose/mini-kube probably)
-- study fuzzy testing, and other testing techniques
-- refine error management of this project
-
-Backlog after current phase
-- Log Compaction
-- Dynamic Membership
-- Educational Highlights
-
+Testing and design testing the following key features
 
 <b> v0.2.0-alpha </b>
 - $5.2 Leader Election
 - $5.3 Log Replication
 - $5.4 Safety
+
+testing for systems is no simplier than systems themselves.
 
 ## The Architecture
 
