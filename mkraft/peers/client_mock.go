@@ -70,6 +70,20 @@ func (mr *MockPeerClientMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockPeerClient)(nil).Close))
 }
 
+// GetNodeID mocks base method.
+func (m *MockPeerClient) GetNodeID() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNodeID")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetNodeID indicates an expected call of GetNodeID.
+func (mr *MockPeerClientMockRecorder) GetNodeID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNodeID", reflect.TypeOf((*MockPeerClient)(nil).GetNodeID))
+}
+
 // RequestVoteWithRetry mocks base method.
 func (m *MockPeerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
 	m.ctrl.T.Helper()

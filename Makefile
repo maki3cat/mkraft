@@ -40,7 +40,7 @@ clean:
 	rm bin/*
 	rm *.log *.pid
 
-test-nodes: build
+integration-test: build
 	echo "Clearning up the node data..."
 	rm -rf ./data/node1/*
 	rm -rf ./data/node2/*

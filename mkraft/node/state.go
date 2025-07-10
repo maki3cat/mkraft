@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	TermAndVoteForFileName = "keystate.mk"
+	MetaStateFileName = "metastate.mk"
 )
 
 // this is called when the node is a candidate and receives enough votes
@@ -85,14 +85,14 @@ func deserializeKeyState(entry string) (uint32, string, error) {
 
 func (n *nodeImpl) getStateFilePath() string {
 	dir := n.cfg.GetDataDir()
-	return filepath.Join(dir, TermAndVoteForFileName)
+	return filepath.Join(dir, MetaStateFileName)
 }
 
 func (n *nodeImpl) getTmpStateFilePath() string {
 	dir := n.cfg.GetDataDir()
 	formatted := time.Now().Format("20060102150405")
 	numericTimestamp := formatted[:len(formatted)-4] + formatted[len(formatted)-3:]
-	fileName := fmt.Sprintf("%s_%s", TermAndVoteForFileName, numericTimestamp)
+	fileName := fmt.Sprintf("%s_%s", MetaStateFileName, numericTimestamp)
 	return filepath.Join(dir, fileName)
 }
 
