@@ -31,11 +31,12 @@ Backlog after current phase
 
 ## The Architecture
 
-<a href="img/impl_design_v1_original.jpg">
+<a href="img/impl_design_v1.jpg">
   <img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
 </a>
 
-## System Deisgns
+
+## Key Deisgns
 ### Invariants/Properties to hold in any condition
 
 1. Election Safety:
@@ -57,6 +58,12 @@ then that entry will be present in the logs of the LEADERS for all higher-number
 5. State Machine Safety: ($5.4)
 if a server has applied a log entry at a given index to the state machine, 
 no other server will ever apply a different log entry for the same index; 
+
+### Meta-State Machine
+<a href="img/impl_design_state_v2.jpg">
+  <img src="img/impl_design_state_v2.jpg" alt="design-v1" align="right">
+</a>
+
 
 ### Key Mechanisms to maintain the invariants/properties
 
