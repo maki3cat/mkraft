@@ -62,4 +62,4 @@ test-nodes: build
 
 verification:
 	echo "verifying leader safety"
-	go run verify/leadersafety.go data/node1/state_history.mk  data/node2/state_history.mk data/node3/state_history.mk 
+	go run verify/leadersafety.go data/node1/state_history.mk data/node2/state_history.mk data/node3/state_history.mk 

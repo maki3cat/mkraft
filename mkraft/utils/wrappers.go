@@ -19,8 +19,9 @@ type RPCRequestWrapper[T RPCRequest, R RPCResponse] struct {
 }
 
 type RPCRespWrapper[T RPCResponse] struct {
-	Err  error
-	Resp T
+	Err                      error
+	Resp                     T
+	PeerNodeIDWithHigherTerm string
 }
 
 type RPCRequest interface {

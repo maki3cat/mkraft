@@ -13,11 +13,13 @@ import (
 )
 
 type Consensus interface {
+
 	// synchronous call to until the a consensus is reached or is failed
 	// it contains forever retry mechanism, so
 	// !!! the ctx shall be Done within the election timeout
 	// !!! This is shortcut method, it returns when the consensus is reached or failed without waiting for all the responses
 	ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error)
+
 	// goroutine management:this method expands goroutines to the number of peers,
 	// but since this system handles appendEnrines once a time in a serial way
 	// I don't think we need to worry about the explosion of goroutines
@@ -38,7 +40,8 @@ func NewConsensus(node Node, logger *zap.Logger, membership peers.Membership) Co
 	}
 }
 
-func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
+func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
+
 	requestID := common.GetRequestID(ctx)
 	total := c.membership.GetTotalMemberCount()
 	peerClients, err := c.membership.GetAllPeerClients()
@@ -57,7 +60,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.Reque
 	}
 
 	peersCount := len(peerClients)
-	resChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
+	respChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
 
 	// check deadline and create rpc timeout
 	deadline, deadlineSet := ctx.Deadline()
@@ -77,12 +80,13 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.Reque
 			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
 			defer rpcCancel()
 			// FAN-IN
-			resp, err := memberHandle.RequestVoteWithRetry(rpcCtx, request)
+			resp, err := memberHandle.RequestVoteWithRetry(rpcCtx, req)
 			res := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-				Resp: resp,
-				Err:  err,
+				Resp:                     resp,
+				Err:                      err,
+				PeerNodeIDWithHigherTerm: memberHandle.GetNodeID(),
 			}
-			resChan <- res
+			respChan <- res
 		}()
 	}
 
@@ -91,7 +95,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.Reque
 	voteFailed := 0
 	for range peersCount {
 		select {
-		case res := <-resChan:
+		case res := <-respChan:
 			if err := res.Err; err != nil {
 				voteFailed++
 				c.logger.Error("error in sending request vote to one node",
@@ -106,19 +110,20 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.Reque
 			} else {
 				resp := res.Resp
 				// if someone responds with a term greater than the current term
-				if resp.Term > request.Term {
+				if resp.Term > req.Term {
 					return &MajorityRequestVoteResp{
-						Term:        resp.Term,
-						VoteGranted: false,
+						Term:                     resp.Term,
+						VoteGranted:              false,
+						PeerNodeIDWithHigherTerm: res.PeerNodeIDWithHigherTerm,
 					}, nil
 				}
-				if resp.Term == request.Term {
+				if resp.Term == req.Term {
 					if resp.VoteGranted {
 						// won the election
 						peerVoteAccumulated++
 						if calculateIfMajorityMet(total, peerVoteAccumulated) {
 							return &MajorityRequestVoteResp{
-								Term:        request.Term,
+								Term:        req.Term,
 								VoteGranted: true,
 							}, nil
 						}
@@ -129,8 +134,13 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, request *rpc.Reque
 						}
 					}
 				}
-				if resp.Term < request.Term {
-					return nil, common.ErrInvariantsBroken
+				if resp.Term < req.Term {
+					// this means the current node doesn't have the latest commit index
+					// todo: there are cares we can cancel the minority response directly,
+					// possibly just looking bad at the logs
+					c.logger.Warn("current node doesn't have the latest commit index, so it fails to get the vote from a peer",
+						zap.String("requestID", requestID))
+					return nil, common.ErrMajorityNotMet
 				}
 			}
 		case <-ctx.Done():
@@ -282,12 +292,15 @@ func calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed i
 
 // peers communication to get the consensus
 type AppendEntriesConsensusResp struct {
-	Term    uint32
-	Success bool
+	Term                     uint32
+	Success                  bool
+	PeerNodeIDWithHigherTerm string // critical if the term is won by a node with a higher term
+	Err                      error
 }
 
 type MajorityRequestVoteResp struct {
-	Term        uint32
-	VoteGranted bool
-	Err         error
+	Term                     uint32
+	VoteGranted              bool
+	PeerNodeIDWithHigherTerm string // critical if the term is won by a node with a higher term
+	Err                      error
 }

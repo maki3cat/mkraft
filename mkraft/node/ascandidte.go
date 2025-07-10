@@ -95,7 +95,10 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 						return
 					} else {
 						if response.Term > currentTerm {
-							err := n.ToFollower("", response.Term, false)
+							// keypoint: here the vote for shall be the one that sends the higher term,
+							// or when the one comes to ask for vote, it will get true
+							// if we save empty, we will not be able to get who wins the vote
+							err := n.ToFollower(response.PeerNodeIDWithHigherTerm, response.Term, false)
 							if err != nil {
 								n.logger.Error("key error: in ToFollower", zap.Error(err))
 								panic(err)
@@ -167,7 +170,7 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestV
 	term, state, _ := n.getKeyState()
 	if state == StateFollower {
 		consensusChan <- &MajorityRequestVoteResp{
-			Err: common.ErrNotCandidate, // todo: test case for this one
+			Err: common.ErrNotCandidate, // todo: test case for this one; and the caller should consume this err
 		}
 		return consensusChan
 	} else {

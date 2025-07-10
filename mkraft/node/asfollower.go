@@ -117,6 +117,7 @@ func (n *nodeImpl) handleVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc
 				panic(err)
 			}
 			voteGranted = true
+			currentTerm = newTerm
 		} else {
 			voteGranted = false
 		}
