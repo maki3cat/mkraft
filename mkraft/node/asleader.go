@@ -14,7 +14,6 @@ import (
 )
 
 // ---------------------------------------CONTROL FLOW: THE LEADER-------------------------------------
-
 /*
 SECTION1: THE COMMON RULE (paper)
 If any RPC request or response is received from a server with a higher term,
@@ -76,16 +75,16 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	degradeChan := make(chan struct{})
 	subWorkerCtx, subWorkerCancel := context.WithCancel(ctx)
 	defer subWorkerCancel()
-	go n.leaderWorkerForLogApplication(subWorkerCtx)
-	go n.senderForLeader(subWorkerCtx, degradeChan)
-	go n.receiverForLeader(subWorkerCtx, degradeChan)
 
-	heartbeatDuration := n.cfg.GetLeaderHeartbeatPeriod()
-	tickerForHeartbeat := time.NewTicker(heartbeatDuration)
-	defer tickerForHeartbeat.Stop()
+	waitGroup := sync.WaitGroup{}
+	waitGroup.Add(3)
+	go n.leaderSendWorker(subWorkerCtx, degradeChan, &waitGroup)
+	go n.leaderReceiverWorker(subWorkerCtx, degradeChan, &waitGroup)
+	go n.leaderLogApplyWorker(subWorkerCtx, &waitGroup)
+
 	for {
 		select {
-		case <-ctx.Done(): // give ctx higher priority
+		case <-ctx.Done():
 			n.logger.Warn("raft node main context done, exiting")
 			return
 		default:
@@ -94,9 +93,8 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 				n.logger.Warn("raft node main context done, exiting")
 				return
 			case <-degradeChan:
-				n.logger.Info("leader is degraded to follower")
 				subWorkerCancel()
-				n.cleanupApplyLogsBeforeToFollower()
+				waitGroup.Wait()
 				go n.RunAsFollower(ctx)
 				return
 			}
@@ -104,7 +102,12 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	}
 }
 
-func (n *nodeImpl) senderForLeader(ctx context.Context, degradeChan chan struct{}) {
+// sender is named from the perspective of sending request to other nodes
+// receiving the client commands triggers sending so put in the same worker
+func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct{}, workerWaitGroup *sync.WaitGroup) {
+	defer workerWaitGroup.Done()
+	defer n.cleanupApplyLogsBeforeToFollower()
+
 	tickerForHeartbeat := time.NewTicker(n.cfg.GetLeaderHeartbeatPeriod())
 	defer tickerForHeartbeat.Stop()
 	for {
@@ -148,7 +151,10 @@ func (n *nodeImpl) senderForLeader(ctx context.Context, degradeChan chan struct{
 	}
 }
 
-func (n *nodeImpl) receiverForLeader(ctx context.Context, degradeChan chan struct{}) {
+// receiver is named from the perspective of receiving request from other nodes
+// not receiving from clients
+func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan struct{}, workerWaitGroup *sync.WaitGroup) {
+	defer workerWaitGroup.Done()
 	for {
 		select {
 		case <-ctx.Done(): // give ctx higher priority
@@ -159,7 +165,6 @@ func (n *nodeImpl) receiverForLeader(ctx context.Context, degradeChan chan struc
 			case <-ctx.Done():
 				n.logger.Warn("raft node main context done, exiting")
 				return
-			// task3: handle the requestVoteChan -> as a node, may degrade to follower
 			case internalReq := <-n.requestVoteCh:
 				singleJobResult, err := n.handleRequestVoteAsLeader(internalReq)
 				if err != nil {
@@ -170,7 +175,6 @@ func (n *nodeImpl) receiverForLeader(ctx context.Context, degradeChan chan struc
 					close(degradeChan)
 					return
 				}
-			// task4: handle the appendEntryChan, need to change raftlog/state machine -> as a node, may degrade to follower
 			case internalReq := <-n.appendEntryCh:
 				singleJobResult, err := n.handlerAppendEntriesAsLeader(internalReq)
 				if err != nil {
