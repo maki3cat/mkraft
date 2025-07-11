@@ -30,7 +30,8 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 	}
 
 	n.logger.Info("STATE CHANGE: node starts to acquiring CANDIDATE state")
-	n.sem.Acquire(ctx, 1)
+	n.runLock.Lock()
+	defer n.runLock.Unlock()
 	n.logger.Info("STATE CHANGE: node has acquired semaphore in CANDIDATE state")
 
 	// there is no tikcer in this cancdiate state, and we use this election return as a de facto ticker
@@ -49,7 +50,6 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 		workerCancel()
 		workerWaitGroup.Wait() // cancel only closes the Done channel, it doesn't wait for the worker to exit
 		n.logger.Info("candidate worker exited successfully")
-		n.sem.Release(1)
 	}()
 
 	reElectionTimer := time.NewTimer(n.cfg.GetElectionTimeout())
