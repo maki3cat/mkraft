@@ -30,7 +30,8 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 		panic("node is not in FOLLOWER state")
 	}
 	n.logger.Info("STATE CHANGE: node acquires to run in FOLLOWER state")
-	n.sem.Acquire(ctx, 1)
+	n.runLock.Lock()
+	defer n.runLock.Unlock()
 	n.logger.Info("STATE CHANGE: acquired semaphore in FOLLOWER state")
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
@@ -48,7 +49,6 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 		workerCancel()
 		workerWaitGroup.Wait() // cancel only closes the Done channel, it doesn't wait for the worker to exit
 		n.logger.Info("follower worker exited the follower state successfully")
-		n.sem.Release(1)
 	}()
 
 	for {

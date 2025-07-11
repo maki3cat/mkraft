@@ -64,9 +64,9 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 		panic("node is not in LEADER state")
 	}
 	n.logger.Info("acquiring the Semaphore as the LEADER state")
-	n.sem.Acquire(ctx, 1)
+	n.runLock.Lock()
+	defer n.runLock.Unlock()
 	n.logger.Info("acquired the Semaphore as the LEADER state")
-	defer n.sem.Release(1)
 
 	// maki: this is a tricky design (the whole design of the log/client command application is tricky)
 	// todo: catch up the log application to make sure lastApplied == commitIndex for the leader

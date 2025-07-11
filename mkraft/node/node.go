@@ -11,7 +11,6 @@ import (
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
 	"go.uber.org/zap"
-	"golang.org/x/sync/semaphore"
 )
 
 type NodeState int
@@ -70,7 +69,7 @@ func NewNode(
 		logger:       logger,
 
 		stateRWLock: &sync.RWMutex{},
-		sem:         semaphore.NewWeighted(1),
+		runLock:     &sync.Mutex{},
 
 		NodeId: nodeId,
 		state:  StateFollower,
@@ -122,9 +121,7 @@ type nodeImpl struct {
 	logger       *zap.Logger
 	statemachine plugs.StateMachine
 
-	// for the node state
-	sem *semaphore.Weighted
-	// a RW mutex for all the internal states in this node
+	runLock     *sync.Mutex
 	stateRWLock *sync.RWMutex
 
 	// persistent file's lock
