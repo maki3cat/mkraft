@@ -60,7 +60,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 	}
 
 	peersCount := len(peerClients)
-	respChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
+	fanInChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
 
 	// check deadline and create rpc timeout
 	deadline, deadlineSet := ctx.Deadline()
@@ -86,7 +86,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 				Err:                      err,
 				PeerNodeIDWithHigherTerm: memberHandle.GetNodeID(),
 			}
-			respChan <- res
+			fanInChan <- res
 		}()
 	}
 
@@ -95,7 +95,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 	voteFailed := 0
 	for range peersCount {
 		select {
-		case res := <-respChan:
+		case res := <-fanInChan:
 			if err := res.Err; err != nil {
 				voteFailed++
 				c.logger.Error("error in sending request vote to one node",
@@ -170,7 +170,7 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 	}
 
 	// in paralelel, send append entries to all peers
-	allRespChan := make(chan utils.RPCRespWrapper[*rpc.AppendEntriesResponse], len(peerClients))
+	fanInChan := make(chan utils.RPCRespWrapper[*rpc.AppendEntriesResponse], len(peerClients))
 
 	// check deadline and create rpc timeout
 	deadline, deadlineSet := ctx.Deadline()
@@ -196,7 +196,7 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 				c.logger.Error("error in sending append entries to one node",
 					zap.Error(err),
 					zap.String("requestID", requestID))
-				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+				fanInChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 					Err: err,
 				}
 				return
@@ -207,7 +207,7 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 				} else {
 					c.node.DecrPeerIdx(nodeID)
 				}
-				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+				fanInChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 					Resp: resp,
 				}
 			}
@@ -221,7 +221,7 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 	peersCount := len(peerClients)
 	for range peersCount {
 		select {
-		case res := <-allRespChan:
+		case res := <-fanInChan:
 			if err := res.Err; err != nil {
 				c.logger.Warn("error returned from appendEntries",
 					zap.Error(err),
