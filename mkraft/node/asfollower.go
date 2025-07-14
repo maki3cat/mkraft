@@ -90,7 +90,6 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					}
 					appendEntryInternal.RespChan <- &wrappedResp
 				}
-
 			}
 		}
 	}
@@ -208,7 +207,7 @@ func (n *nodeImpl) updateLogsAsNoLeader(ctx context.Context, req *rpc.AppendEntr
 	return n.raftLog.UpdateLogsInBatch(ctx, req.PrevLogIndex, logs, req.Term)
 }
 
-// SHARED BY LEADER AND CANDIDATE
+// SHARED BY FOLLOWER AND CANDIDATE
 // noleader-WORKER-2 aside from the apply worker-1
 // this worker is forever looping to handle client commands, should be called in a separate goroutine
 // quits on the context done, and set the waitGroup before return
@@ -218,12 +217,12 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 	for {
 		select {
 		case <-ctx.Done():
-			n.logger.Info("client-command-worker, exiting leader's worker for client commands")
+			n.logger.Info("client-command-worker, exiting on context done")
 			return
 		default:
 			select {
 			case <-ctx.Done():
-				n.logger.Info("client-command-worker, exiting leader's worker for client commands")
+				n.logger.Info("client-command-worker, exiting on context done")
 				return
 			case cmd := <-n.leaderApplyCh:
 				n.logger.Info("client-command-worker, received client command")

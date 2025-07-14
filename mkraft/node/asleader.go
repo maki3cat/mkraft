@@ -93,6 +93,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 				n.logger.Warn("raft node main context done, exiting")
 				return
 			case <-degradeChan:
+				n.logger.Info("leader degrade to follower, exiting")
 				subWorkerCancel()
 				waitGroup.Wait()
 				go n.RunAsFollower(ctx)
@@ -197,10 +198,15 @@ type JobResult struct {
 	Term TermRank
 	// if the current node doesn't vote for anyone when term changes, the voteFor is empty
 	VotedFor string
+
+	// if the shallDegrade is true, shall fill in the FromTerm and ToTerm
+	FromTerm TermRank
+	ToTerm   TermRank
 }
 
 // @return: shall degrade to follower or not,
 // @return: if err is not nil, the caller shall retry
+// warning: this function doesn't change the state inside it right now
 func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	currentTerm, _, _ := n.getKeyState()
@@ -233,28 +239,24 @@ func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 	ctxTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetRPCRequestTimeout())
 	defer cancel()
 
-	// the handling of success/failure is not aligned with the consensus method
 	resp, err := n.consensus.ConsensusAppendEntries(ctxTimeout, reqs, n.CurrentTerm)
 	if err != nil {
 		n.logger.Error("error in sending append entries to one node", zap.Error(err))
 		return JobResult{ShallDegrade: false}, err
 	}
-
-	// shouldn't have this case, fatal error -> it won't happen
-	if resp.Term > currentTerm && resp.Success {
-		panic("should not happen, break the property of Election Safety")
-	}
-
 	if resp.Success {
 		n.logger.Info("append entries success", zap.String("requestID", requestID))
 		return JobResult{ShallDegrade: false}, nil
 	} else {
-		// another failed reason is the prelog is not correct
 		if resp.Term > currentTerm {
 			n.logger.Warn("peer's term is greater than current term", zap.String("requestID", requestID))
-			return JobResult{ShallDegrade: true, Term: TermRank(resp.Term), VotedFor: "Na"}, nil
+			return JobResult{
+				ShallDegrade: true,
+				VotedFor:     resp.PeerNodeIDWithHigherTerm,
+				FromTerm:     TermRank(currentTerm),
+				ToTerm:       TermRank(resp.Term),
+			}, nil
 		} else {
-			// should retry: may be from the network error and the majority failed
 			return JobResult{ShallDegrade: false}, errors.New("append entries failed, shall retry")
 		}
 	}
@@ -265,6 +267,7 @@ func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 // problem-2: the leader is alive but majority followers are dead
 // problem-3: the leader is stale
 // @return: shall degrade to follower or not, and the error
+// todo: warning: this function doesn't change the state inside it right now
 func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*utils.ClientCommandInternalReq) (JobResult, error) {
 
 	var subTasksToWait sync.WaitGroup
@@ -396,18 +399,47 @@ func (n *nodeImpl) handlerAppendEntriesAsLeader(internalReq *utils.AppendEntries
 }
 
 func (n *nodeImpl) handleRequestVoteAsLeader(internalReq *utils.RequestVoteInternalReq) (JobResult, error) {
-	resp := n.handleVoteRequest(internalReq.Req)
-	wrapper := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-		Resp: resp,
-		Err:  nil,
+
+	req := internalReq.Req
+	candidateLastLogIdx := req.LastLogIndex
+	candidateLastLogTerm := req.LastLogTerm
+	candidateId := req.CandidateId
+	newTerm := req.Term
+	nodeID := req.NodeId
+	resp := new(rpc.RequestVoteResponse)
+	defer func() {
+		internalReq.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
+			Resp: resp,
+			Err:  nil,
+		}
+	}()
+
+	// protect the state read/write
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+
+	fromTerm := TermRank(n.CurrentTerm)
+	if n.CurrentTerm < req.Term {
+		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
+		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
+			err := n.ToFollower(candidateId, newTerm, true)
+			if err != nil {
+				n.logger.Error("error in ToFollower", zap.Error(err))
+				panic(err)
+			}
+			resp.Term = n.CurrentTerm
+			resp.VoteGranted = true
+			return JobResult{ShallDegrade: true, FromTerm: fromTerm, ToTerm: TermRank(req.Term), VotedFor: nodeID}, nil
+		}
 	}
-	internalReq.RespChan <- &wrapper
-	if resp.VoteGranted {
-		return JobResult{ShallDegrade: true, Term: TermRank(internalReq.Req.Term), VotedFor: "Na"}, nil
-	} else {
-		return JobResult{ShallDegrade: false}, nil
-	}
+
+	// the leader should reject the vote in all other cases
+	resp.Term = n.CurrentTerm
+	resp.VoteGranted = false
+	return JobResult{ShallDegrade: false}, nil
 }
+
+// utils
 
 func (n *nodeImpl) getLogsToCatchupForPeers(peerNodeIDs []string) (map[string]log.CatchupLogs, error) {
 	// todo: can be batch reading

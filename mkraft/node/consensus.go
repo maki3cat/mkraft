@@ -202,13 +202,16 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 				return
 			} else {
 				if resp.Success {
+					// todo: the index part should be checked and reorganized
 					// update the peers' index
 					c.node.IncrPeerIdx(nodeID, uint64(len(req.Entries)))
 				} else {
 					c.node.DecrPeerIdx(nodeID)
 				}
 				fanInChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
-					Resp: resp,
+					Resp:                     resp,
+					Err:                      nil,
+					PeerNodeIDWithHigherTerm: nodeID,
 				}
 			}
 		}(nodeID, member)
@@ -221,21 +224,22 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 	peersCount := len(peerClients)
 	for range peersCount {
 		select {
-		case res := <-fanInChan:
-			if err := res.Err; err != nil {
+		case wrappedResp := <-fanInChan:
+			if err := wrappedResp.Err; err != nil {
 				c.logger.Warn("error returned from appendEntries",
 					zap.Error(err),
 					zap.String("requestID", requestID))
 				failAccumulated++
 				continue
 			} else {
-				resp := res.Resp
+				resp := wrappedResp.Resp
 				if resp.Term > currentTerm {
 					c.logger.Info("peer's term is greater than current term",
 						zap.String("requestID", requestID))
 					return &AppendEntriesConsensusResp{
-						Term:    resp.Term,
-						Success: false,
+						Term:                     resp.Term,
+						Success:                  false,
+						PeerNodeIDWithHigherTerm: wrappedResp.PeerNodeIDWithHigherTerm,
 					}, nil
 				}
 				if resp.Term == currentTerm {
@@ -248,24 +252,16 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 							}, nil
 						}
 					} else {
-						failAccumulated++
-						if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, failAccumulated) {
-							c.logger.Warn("another node with same term becomes the leader",
-								zap.String("requestID", requestID))
-							return &AppendEntriesConsensusResp{
-								Term:    resp.Term,
-								Success: false,
-							}, nil
-						}
+						c.logger.Error("append entries failed probably because of the prelog is not correct",
+							zap.String("requestID", requestID))
+						return &AppendEntriesConsensusResp{
+							Term:    resp.Term,
+							Success: false,
+						}, nil
 					}
 				}
 				if resp.Term < currentTerm {
-					c.logger.Error(
-						"invairant failed, smaller term is not overwritten by larger term",
-						zap.String("response", resp.String()),
-						zap.String("requestID", requestID))
-					c.logger.Error("this should not happen, the consensus algorithm is not implmented correctly")
-					return nil, common.ErrInvariantsBroken
+					panic("this should not happen, the append entries should not get a smaller term than the current term")
 				}
 			}
 		case <-ctx.Done():
@@ -295,12 +291,12 @@ type AppendEntriesConsensusResp struct {
 	Term                     uint32
 	Success                  bool
 	PeerNodeIDWithHigherTerm string // critical if the term is won by a node with a higher term
-	Err                      error
+	// Err                      error
 }
 
 type MajorityRequestVoteResp struct {
 	Term                     uint32
 	VoteGranted              bool
 	PeerNodeIDWithHigherTerm string // critical if the term is won by a node with a higher term
-	Err                      error
+	// Err                      error
 }
