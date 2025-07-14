@@ -34,8 +34,6 @@ func (state NodeState) String() string {
 	return "Unknown State"
 }
 
-type TermRank int
-
 var _ Node = (*nodeImpl)(nil)
 
 type Node interface {

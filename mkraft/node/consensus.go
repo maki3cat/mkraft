@@ -60,7 +60,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 	}
 
 	peersCount := len(peerClients)
-	respChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
+	fanInChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
 
 	// check deadline and create rpc timeout
 	deadline, deadlineSet := ctx.Deadline()
@@ -82,11 +82,11 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 			// FAN-IN
 			resp, err := memberHandle.RequestVoteWithRetry(rpcCtx, req)
 			res := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-				Resp:                     resp,
-				Err:                      err,
-				PeerNodeIDWithHigherTerm: memberHandle.GetNodeID(),
+				Resp:       resp,
+				Err:        err,
+				PeerNodeID: memberHandle.GetNodeID(),
 			}
-			respChan <- res
+			fanInChan <- res
 		}()
 	}
 
@@ -95,7 +95,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 	voteFailed := 0
 	for range peersCount {
 		select {
-		case res := <-respChan:
+		case res := <-fanInChan:
 			if err := res.Err; err != nil {
 				voteFailed++
 				c.logger.Error("error in sending request vote to one node",
@@ -114,7 +114,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 					return &MajorityRequestVoteResp{
 						Term:                     resp.Term,
 						VoteGranted:              false,
-						PeerNodeIDWithHigherTerm: res.PeerNodeIDWithHigherTerm,
+						PeerNodeIDWithHigherTerm: res.PeerNodeID,
 					}, nil
 				}
 				if resp.Term == req.Term {
@@ -170,7 +170,7 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 	}
 
 	// in paralelel, send append entries to all peers
-	allRespChan := make(chan utils.RPCRespWrapper[*rpc.AppendEntriesResponse], len(peerClients))
+	fanInChan := make(chan utils.RPCRespWrapper[*rpc.AppendEntriesResponse], len(peerClients))
 
 	// check deadline and create rpc timeout
 	deadline, deadlineSet := ctx.Deadline()
@@ -196,19 +196,22 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 				c.logger.Error("error in sending append entries to one node",
 					zap.Error(err),
 					zap.String("requestID", requestID))
-				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+				fanInChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 					Err: err,
 				}
 				return
 			} else {
 				if resp.Success {
+					// todo: the index part should be checked and reorganized
 					// update the peers' index
 					c.node.IncrPeerIdx(nodeID, uint64(len(req.Entries)))
 				} else {
 					c.node.DecrPeerIdx(nodeID)
 				}
-				allRespChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
-					Resp: resp,
+				fanInChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+					Resp:       resp,
+					Err:        nil,
+					PeerNodeID: nodeID,
 				}
 			}
 		}(nodeID, member)
@@ -221,21 +224,22 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 	peersCount := len(peerClients)
 	for range peersCount {
 		select {
-		case res := <-allRespChan:
-			if err := res.Err; err != nil {
+		case wrappedResp := <-fanInChan:
+			if err := wrappedResp.Err; err != nil {
 				c.logger.Warn("error returned from appendEntries",
 					zap.Error(err),
 					zap.String("requestID", requestID))
 				failAccumulated++
 				continue
 			} else {
-				resp := res.Resp
+				resp := wrappedResp.Resp
 				if resp.Term > currentTerm {
 					c.logger.Info("peer's term is greater than current term",
 						zap.String("requestID", requestID))
 					return &AppendEntriesConsensusResp{
-						Term:    resp.Term,
-						Success: false,
+						Term:                     resp.Term,
+						Success:                  false,
+						PeerNodeIDWithHigherTerm: wrappedResp.PeerNodeID,
 					}, nil
 				}
 				if resp.Term == currentTerm {
@@ -248,24 +252,16 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 							}, nil
 						}
 					} else {
-						failAccumulated++
-						if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, failAccumulated) {
-							c.logger.Warn("another node with same term becomes the leader",
-								zap.String("requestID", requestID))
-							return &AppendEntriesConsensusResp{
-								Term:    resp.Term,
-								Success: false,
-							}, nil
-						}
+						c.logger.Error("append entries failed probably because of the prelog is not correct",
+							zap.String("requestID", requestID))
+						return &AppendEntriesConsensusResp{
+							Term:    resp.Term,
+							Success: false,
+						}, nil
 					}
 				}
 				if resp.Term < currentTerm {
-					c.logger.Error(
-						"invairant failed, smaller term is not overwritten by larger term",
-						zap.String("response", resp.String()),
-						zap.String("requestID", requestID))
-					c.logger.Error("this should not happen, the consensus algorithm is not implmented correctly")
-					return nil, common.ErrInvariantsBroken
+					panic("this should not happen, the append entries should not get a smaller term than the current term")
 				}
 			}
 		case <-ctx.Done():
@@ -295,7 +291,7 @@ type AppendEntriesConsensusResp struct {
 	Term                     uint32
 	Success                  bool
 	PeerNodeIDWithHigherTerm string // critical if the term is won by a node with a higher term
-	Err                      error
+	// Err                      error
 }
 
 type MajorityRequestVoteResp struct {
