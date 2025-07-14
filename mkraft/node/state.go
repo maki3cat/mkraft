@@ -20,7 +20,7 @@ const (
 // this is called when the node is a candidate and receives enough votes
 // vote for and term are the same as the candidate's
 func (n *nodeImpl) ToLeader() error {
-	n.logger.Debug("STATE CHANGE: follower timeouts and upgrades to leader")
+	n.logger.Debug("STATE CHANGE: to leader is called")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	n.state = StateLeader
@@ -29,7 +29,7 @@ func (n *nodeImpl) ToLeader() error {
 }
 
 func (n *nodeImpl) ToCandidate(reEntrant bool) error {
-	n.logger.Debug("STATE CHANGE: follower timeouts and upgrades to candidate")
+	n.logger.Debug("STATE CHANGE: to candidate is called")
 	if !reEntrant {
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()
@@ -46,11 +46,12 @@ func (n *nodeImpl) ToCandidate(reEntrant bool) error {
 	n.CurrentTerm = term
 	n.VotedFor = voteFor
 	n.tracer.add(term, n.NodeId, StateCandidate, voteFor)
+
 	return nil
 }
 
 func (n *nodeImpl) ToFollower(voteFor string, newTerm uint32, reEntrant bool) error {
-	n.logger.Debug("STATE CHANGE: follower votes for another peer.")
+	n.logger.Debug("STATE CHANGE: to follower is called.")
 	if !reEntrant {
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()

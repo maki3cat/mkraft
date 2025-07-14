@@ -23,9 +23,12 @@ A Raft implementation:
 
 testing for systems is no simplier than systems themselves.
 
-## Some Key Implementation Decisions
+## Journey of Testing
 
 - **"Panic" is welcome**: anti-intuition decision, use panic freely whenever there is no explicit way of handling errors; debugging is extremely hard for this kind of project;
+
+- **Unit-testing is Trivial and should be all AI generated**: 
+I feel unit-testing for this kind of system engineering project is useless for most of the part. It is important when I calculate the majority or doing some math; but for the complex systems, they are far from enough; I am not saying we should 
 
 ## The Implementation Designs and Models
 
