@@ -298,5 +298,5 @@ type MajorityRequestVoteResp struct {
 	Term                     uint32
 	VoteGranted              bool
 	PeerNodeIDWithHigherTerm string // critical if the term is won by a node with a higher term
-	// Err                      error
+	Err                      error
 }
