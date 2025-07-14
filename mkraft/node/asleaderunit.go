@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/maki3cat/mkraft/common"
@@ -28,44 +27,60 @@ type UnitResult struct {
 // problem-3: the leader is stale
 // @return: shall degrade to follower or not, and the error
 // todo: warning: this function doesn't change the state inside it right now
-func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*utils.ClientCommandInternalReq) (UnitResult, error) {
+// todo: errors that should panic; maybe we should use panic freely and even a lot in the first version
+// todo: so that the debugging process is easier
+func (n *nodeImpl) syncSendAppendEntries(ctx context.Context, clientCommands []*utils.ClientCommandInternalReq) (UnitResult, error) {
 
 	var subTasksToWait sync.WaitGroup
 	subTasksToWait.Add(2)
-	currentTerm, _, _ := n.getKeyState()
 
-	// prep:
-	// get logs from the raft logs for each client
-	// before the task-1 trying to change the logs and task-2 reading the logs in parallel and we don't know who is faster
+	// prep logs
+	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	peerNodeIDs, err := n.membership.GetAllPeerNodeIDs()
 	if err != nil {
-		return UnitResult{ShallDegrade: false}, err
+		panic(err)
 	}
 	cathupLogsForPeers, err := n.helperForCatchupLogs(peerNodeIDs)
 	if err != nil {
-		return UnitResult{ShallDegrade: false}, err
+		panic(err)
+	}
+
+	// if the state is not leader, we save us one rpc call to all peers
+	currentTerm, state, _ := n.getKeyState()
+	if state != StateLeader {
+		n.stateRWLock.RUnlock()
+		return UnitResult{ShallDegrade: false}, common.ErrStateChangedDuringIO
 	}
 
 	// task1: appends the command to the local as a new entry
+	// if there is no command, we don't need to append the logs
 	errorChanTask1 := make(chan error, 1)
-	go func(ctx context.Context) {
-		defer subTasksToWait.Done()
-		commands := make([][]byte, len(clientCommands))
-		for i, clientCommand := range clientCommands {
-			commands[i] = clientCommand.Req.Command
-		}
-		errorChanTask1 <- n.raftLog.AppendLogsInBatch(ctx, commands, currentTerm)
-	}(ctx)
+	if len(clientCommands) > 0 {
+		go func(ctx context.Context) {
+			defer subTasksToWait.Done()
+			commands := make([][]byte, len(clientCommands))
+			for i, clientCommand := range clientCommands {
+				commands[i] = clientCommand.Req.Command
+			}
+			errorChanTask1 <- n.raftLog.AppendLogsInBatch(ctx, commands, currentTerm)
+		}(ctx)
+	} else {
+		subTasksToWait.Done()
+		errorChanTask1 <- nil
+	}
 
 	// task2 sends the command of appendEntries to all the followers in parallel to replicate the entry
+	// granular lock -2: check the state again before sending the request
 	respChan := make(chan *AppendEntriesConsensusResp, 1)
 	errorChanTask2 := make(chan error, 1)
 	go func(ctx context.Context) {
 		defer subTasksToWait.Done()
 		newCommands := make([]*rpc.LogEntry, len(clientCommands))
-		for i, clientCommand := range clientCommands {
-			newCommands[i] = &rpc.LogEntry{
-				Data: clientCommand.Req.Command,
+		if len(clientCommands) > 0 {
+			for i, clientCommand := range clientCommands {
+				newCommands[i] = &rpc.LogEntry{
+					Data: clientCommand.Req.Command,
+				}
 			}
 		}
 		reqs := make(map[string]*rpc.AppendEntriesRequest, len(peerNodeIDs))
@@ -89,26 +104,28 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 		errorChanTask2 <- err
 	}(ctx)
 
-	// todo: shall retry forever?
-	// todo: what if task1 fails and task2 succeeds?
-	// todo: what if task1 succeeds and task2 fails?
-	// task3 when the entry has been safely replicated, the leader applies the entry to the state machine
 	subTasksToWait.Wait()
-	// maki: not sure how to handle the error?
 	if err := <-errorChanTask1; err != nil {
 		n.logger.Error("error in appending logs to raft log", zap.Error(err))
-		panic("not sure how to handle the error")
+		panic("not sure how to handle task-1 error")
 	}
 	if err := <-errorChanTask2; err != nil {
 		n.logger.Error("error in sending append entries to one node", zap.Error(err))
-		panic("not sure how to handle the error")
+		panic("not sure how to handle task-2 error")
 	}
+
 	resp := <-respChan
-	if !resp.Success { // no consensus
+	if !resp.Success {
 		if resp.Term > currentTerm {
+			n.stateRWLock.RLock()
+			if n.CurrentTerm > resp.Term {
+				// this response is stale, but the consensus is true
+				n.logger.Warn("the response is stale, but the consensus is true", zap.String("requestID", requestID))
+				panic("not sure how to handle the stale response")
+			}
+			n.ToFollower(resp.PeerNodeIDWithHigherTerm, resp.Term, true)
 			return UnitResult{ShallDegrade: true, ToTerm: resp.Term, FromTerm: currentTerm, VotedFor: resp.PeerNodeIDWithHigherTerm}, nil
 		} else {
-			// todo: the unsafe panic is temporarily used for debugging
 			panic("failed append entries, but without not a higher term")
 		}
 	} else {
@@ -124,99 +141,8 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 	}
 }
 
-// todo:
-// could we use the syncDoLogReplication to send heartbeat as empty command?
-// critical section: granular lock to separate the function into 3 parts
-// if the state changed during the IO,
-// @return ErrStateChangedDuringIO, which should not retry
-// @return: if err is not nil and not ErrStateChangedDuringIO, the caller shall retry
-// todo: errors that should panic; maybe we should use panic freely and even a lot in the first version
-// todo: so that the debugging process is easier
 func (n *nodeImpl) syncSendHeartbeat(ctx context.Context) (UnitResult, error) {
-
-	// granular lock -1: check the state before preparing the main logic
-	n.stateRWLock.RLock()
-	currentTerm, state, _ := n.getKeyState()
-	if state != StateLeader {
-		return UnitResult{ShallDegrade: false}, common.ErrNotLeader
-	}
-	n.stateRWLock.RUnlock()
-
-	ctx, requestID := common.GetOrGenerateRequestID(ctx)
-	peerNodeIDs, err := n.membership.GetAllPeerNodeIDs()
-	if err != nil {
-		panic(err)
-	}
-	// catch up logs for peers
-	cathupLogsForPeers, err := n.helperForCatchupLogs(peerNodeIDs)
-	if err != nil {
-		panic(err)
-	}
-	reqs := make(map[string]*rpc.AppendEntriesRequest, len(peerNodeIDs))
-	for nodeID, catchup := range cathupLogsForPeers {
-		catchupCommands := make([]*rpc.LogEntry, len(catchup.Entries))
-		for i, log := range catchup.Entries {
-			catchupCommands[i] = &rpc.LogEntry{
-				Data: log.Commands,
-			}
-		}
-		reqs[nodeID] = &rpc.AppendEntriesRequest{
-			Term:         currentTerm,
-			LeaderId:     n.NodeId,
-			PrevLogIndex: catchup.LastLogIndex,
-			PrevLogTerm:  catchup.LastLogTerm,
-			Entries:      catchupCommands,
-			LeaderCommit: n.getCommitIdx(),
-		}
-	}
-
-	ctxTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetRPCRequestTimeout())
-	defer cancel()
-
-	// granular lock -2: check the state again before sending the request
-	n.stateRWLock.RLock()
-	currentTerm2, state, _ := n.getKeyState()
-	if state != StateLeader || currentTerm2 != currentTerm {
-		return UnitResult{ShallDegrade: false}, common.ErrStateChangedDuringIO
-	}
-	n.stateRWLock.RUnlock()
-
-	resp, err := n.consensus.ConsensusAppendEntries(ctxTimeout, reqs, n.CurrentTerm)
-	if err != nil {
-		n.logger.Error("error in sending append entries to one node", zap.Error(err))
-		return UnitResult{ShallDegrade: false}, err
-	}
-	if resp.Success {
-		n.logger.Debug("append entries success", zap.String("requestID", requestID))
-		return UnitResult{ShallDegrade: false}, nil
-	} else {
-		// granular lock -3: check the state again after receiving the response
-		// but at this point, the IO is already done, so we can just lock to the end of the function
-		n.stateRWLock.RLock()
-		defer n.stateRWLock.RUnlock()
-		currentTerm3, state, _ := n.getKeyState()
-		if state != StateLeader || currentTerm3 != currentTerm {
-			return UnitResult{ShallDegrade: false}, common.ErrStateChangedDuringIO
-		}
-		if resp.Term > currentTerm {
-			// key line: state change
-			n.logger.Info("peer's term is greater than current term, degrade to follower", zap.String("requestID", requestID))
-			err := n.ToFollower(resp.PeerNodeIDWithHigherTerm, resp.Term, true)
-			if err != nil {
-				n.logger.Error("error in ToFollower", zap.Error(err))
-				panic(err)
-			}
-			return UnitResult{
-				ShallDegrade: true,
-				VotedFor:     resp.PeerNodeIDWithHigherTerm,
-				FromTerm:     currentTerm,
-				ToTerm:       resp.Term,
-			}, nil
-		} else {
-			n.logger.Error("append entries failed probably because of the index mismatch", zap.String("requestID", requestID))
-			return UnitResult{ShallDegrade: false}, errors.New("append entries failed, shall retry")
-		}
-	}
+	return n.syncSendAppendEntries(ctx, nil)
 }
 
 // ---------------------------------------the receiver units for the leader-------------------------------------

@@ -134,7 +134,7 @@ func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct
 				batchingSize := n.cfg.GetRaftNodeRequestBufferSize() - 1
 				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
 				clientCommands = append(clientCommands, clientCmd)
-				singleJobResult, err := n.syncDoLogReplication(clientCmd.Ctx, clientCommands)
+				singleJobResult, err := n.syncSendAppendEntries(clientCmd.Ctx, clientCommands)
 				if err != nil {
 					// todo: as is same with most other panics, temporary solution, shall handle the error properly
 					panic(err)
