@@ -24,18 +24,30 @@ Testing and design testing the following key features
 
 testing for systems is no simplier than systems themselves.
 
-## Some Key Decisions
-- anti-intuition decision, use panic freely whenever there is no explicit way of handling errors; debugging is extremely hard for this kind of project;
+## Some Key Implementation Decisions
+- "Panic" is welcome: anti-intuition decision, use panic freely whenever there is no explicit way of handling errors; debugging is extremely hard for this kind of project;
 
-## The Architecture
+## The Implementation Designs and Models
+
+the implementation architecture
 
 <a href="img/impl_design_v1.jpg">
   <img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
 </a>
 
+the meta-state machine
 
-## Key Deisgns
-### Invariants/Properties to hold in any condition
+<a href="img/impl_design_state_v2.jpg">
+  <img src="img/impl_design_state_v2.jpg" alt="design-v1" align="right">
+</a>
+
+the as-leader implementation
+
+<a href="img/impl_design_asleader.jpg">
+  <img src="img/impl_design_asleader.jpg" alt="design-v1" align="right">
+</a>
+
+## Invariants/Properties to hold in any condition
 
 1. Election Safety:
 at most one leader can be elected at a given term; ($5.2)
@@ -56,11 +68,6 @@ then that entry will be present in the logs of the LEADERS for all higher-number
 5. State Machine Safety: ($5.4)
 if a server has applied a log entry at a given index to the state machine, 
 no other server will ever apply a different log entry for the same index; 
-
-### Meta-State Machine
-<a href="img/impl_design_state_v2.jpg">
-  <img src="img/impl_design_state_v2.jpg" alt="design-v1" align="right">
-</a>
 
 
 ### Key Mechanisms to maintain the invariants/properties
