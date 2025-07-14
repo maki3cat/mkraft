@@ -15,8 +15,7 @@ A Raft implementation:
 
 ## What I am currently Doing
 
-Testing and design testing the following key features
-
+**Testing, debugging, refactoring** for the following version:
 <b> v0.2.0-alpha </b>
 - $5.2 Leader Election
 - $5.3 Log Replication
@@ -25,9 +24,11 @@ Testing and design testing the following key features
 testing for systems is no simplier than systems themselves.
 
 ## Some Key Implementation Decisions
-- "Panic" is welcome: anti-intuition decision, use panic freely whenever there is no explicit way of handling errors; debugging is extremely hard for this kind of project;
+
+- **"Panic" is welcome**: anti-intuition decision, use panic freely whenever there is no explicit way of handling errors; debugging is extremely hard for this kind of project;
 
 ## The Implementation Designs and Models
+
 
 the implementation architecture
 
@@ -42,6 +43,7 @@ the meta-state machine
 </a>
 
 the as-leader implementation
+
 
 <a href="img/impl_design_asleader.jpg">
   <img src="img/impl_design_asleader.jpg" alt="design-v1" align="right">
