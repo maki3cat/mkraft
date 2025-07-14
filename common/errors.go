@@ -8,6 +8,7 @@ func ContextDoneErr() error {
 
 // raft log errors
 var ErrPreLogNotMatch = errors.New("prelog not match")
+var ErrStateChangedDuringIO = errors.New("state changed during IO")
 var ErrNotLeader = errors.New("not leader")
 var ErrNotCandidate = errors.New("not candidate")
 var ErrServerBusy = errors.New("server busy")

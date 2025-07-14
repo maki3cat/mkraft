@@ -20,11 +20,12 @@ type UnitResult struct {
 
 // ---------------------------------------the sender units for the leader-------------------------------------
 
-// critical section: r
-// consensus IO
-// @return: shall degrade to follower or not,
-// @return: if err is not nil, the caller shall retry
-// warning: this function doesn't change the state inside it right now
+// critical section: granular lock to separate the function into 3 parts
+// if the state changed during the IO,
+// @return ErrStateChangedDuringIO, which should not retry
+// @return: if err is not nil and not ErrStateChangedDuringIO, the caller shall retry
+// todo: errors that should panic; maybe we should use panic freely and even a lot in the first version
+// todo: so that the debugging process is easier
 func (n *nodeImpl) syncSendHeartbeat(ctx context.Context) (UnitResult, error) {
 
 	// granular lock -1: check the state before preparing the main logic
@@ -38,12 +39,12 @@ func (n *nodeImpl) syncSendHeartbeat(ctx context.Context) (UnitResult, error) {
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	peerNodeIDs, err := n.membership.GetAllPeerNodeIDs()
 	if err != nil {
-		return UnitResult{ShallDegrade: false}, err
+		panic(err)
 	}
 	// catch up logs for peers
 	cathupLogsForPeers, err := n.getLogsToCatchupForPeers(peerNodeIDs)
 	if err != nil {
-		return UnitResult{ShallDegrade: false}, err
+		panic(err)
 	}
 	reqs := make(map[string]*rpc.AppendEntriesRequest, len(peerNodeIDs))
 	for nodeID, catchup := range cathupLogsForPeers {
@@ -70,7 +71,7 @@ func (n *nodeImpl) syncSendHeartbeat(ctx context.Context) (UnitResult, error) {
 	n.stateRWLock.RLock()
 	currentTerm2, state, _ := n.getKeyState()
 	if state != StateLeader || currentTerm2 != currentTerm {
-		return UnitResult{ShallDegrade: false}, common.ErrNotLeader
+		return UnitResult{ShallDegrade: false}, common.ErrStateChangedDuringIO
 	}
 	n.stateRWLock.RUnlock()
 
@@ -80,7 +81,7 @@ func (n *nodeImpl) syncSendHeartbeat(ctx context.Context) (UnitResult, error) {
 		return UnitResult{ShallDegrade: false}, err
 	}
 	if resp.Success {
-		n.logger.Info("append entries success", zap.String("requestID", requestID))
+		n.logger.Debug("append entries success", zap.String("requestID", requestID))
 		return UnitResult{ShallDegrade: false}, nil
 	} else {
 		// granular lock -3: check the state again after receiving the response
@@ -89,16 +90,16 @@ func (n *nodeImpl) syncSendHeartbeat(ctx context.Context) (UnitResult, error) {
 		defer n.stateRWLock.RUnlock()
 		currentTerm3, state, _ := n.getKeyState()
 		if state != StateLeader || currentTerm3 != currentTerm {
-			return UnitResult{ShallDegrade: false}, common.ErrNotLeader
+			return UnitResult{ShallDegrade: false}, common.ErrStateChangedDuringIO
 		}
 		if resp.Term > currentTerm {
 			// key line: state change
+			n.logger.Info("peer's term is greater than current term, degrade to follower", zap.String("requestID", requestID))
 			err := n.ToFollower(resp.PeerNodeIDWithHigherTerm, resp.Term, true)
 			if err != nil {
 				n.logger.Error("error in ToFollower", zap.Error(err))
 				panic(err)
 			}
-			n.logger.Warn("peer's term is greater than current term", zap.String("requestID", requestID))
 			return UnitResult{
 				ShallDegrade: true,
 				VotedFor:     resp.PeerNodeIDWithHigherTerm,

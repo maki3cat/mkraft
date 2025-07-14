@@ -13,7 +13,6 @@ A Raft implementation:
 
 <img src="img/logo.jpg" alt="My Image" align="right" width="250">
 
-
 ## What I am currently Doing
 
 Testing and design testing the following key features
@@ -24,6 +23,9 @@ Testing and design testing the following key features
 - $5.4 Safety
 
 testing for systems is no simplier than systems themselves.
+
+## Some Key Decisions
+- anti-intuition decision, use panic freely whenever there is no explicit way of handling errors; debugging is extremely hard for this kind of project;
 
 ## The Architecture
 
