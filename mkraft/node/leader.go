@@ -2,11 +2,9 @@ package node
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
-	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
@@ -124,7 +122,7 @@ func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct
 			// task1: send the heartbeat -> as leader, may degrade to follower
 			case <-tickerForHeartbeat.C:
 				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
-				singleJobResult, err := n.syncDoHeartbeat(ctx)
+				singleJobResult, err := n.syncSendHeartbeat(ctx)
 				if err != nil {
 					n.logger.Error("error in sending heartbeat, omit it for next retry", zap.Error(err))
 				}
@@ -167,7 +165,7 @@ func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan st
 				n.logger.Warn("raft node main context done, exiting")
 				return
 			case internalReq := <-n.requestVoteCh:
-				singleJobResult, err := n.handleRequestVoteAsLeader(internalReq)
+				singleJobResult, err := n.recvRequestVoteAsLeader(internalReq)
 				if err != nil {
 					n.logger.Error("error in handling request vote", zap.Error(err))
 					panic(err)
@@ -177,7 +175,7 @@ func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan st
 					return
 				}
 			case internalReq := <-n.appendEntryCh:
-				singleJobResult, err := n.handlerAppendEntriesAsLeader(internalReq)
+				singleJobResult, err := n.recvAppendEntriesAsLeader(internalReq)
 				if err != nil {
 					n.logger.Error("error in handling append entries", zap.Error(err))
 					panic(err)
@@ -192,75 +190,6 @@ func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan st
 }
 
 // ---------------------------------------small unit helper functions for the leader-------------------------------------
-type JobResult struct {
-	ShallDegrade bool
-	// if the shallDegrade is false, there is no need to fill in the term, and voteFor
-	Term TermRank
-	// if the current node doesn't vote for anyone when term changes, the voteFor is empty
-	VotedFor string
-
-	// if the shallDegrade is true, shall fill in the FromTerm and ToTerm
-	FromTerm TermRank
-	ToTerm   TermRank
-}
-
-// @return: shall degrade to follower or not,
-// @return: if err is not nil, the caller shall retry
-// warning: this function doesn't change the state inside it right now
-func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
-	ctx, requestID := common.GetOrGenerateRequestID(ctx)
-	currentTerm, _, _ := n.getKeyState()
-	peerNodeIDs, err := n.membership.GetAllPeerNodeIDs()
-	if err != nil {
-		return JobResult{ShallDegrade: false}, err
-	}
-	cathupLogsForPeers, err := n.getLogsToCatchupForPeers(peerNodeIDs)
-	if err != nil {
-		return JobResult{ShallDegrade: false}, err
-	}
-	reqs := make(map[string]*rpc.AppendEntriesRequest, len(peerNodeIDs))
-	for nodeID, catchup := range cathupLogsForPeers {
-		catchupCommands := make([]*rpc.LogEntry, len(catchup.Entries))
-		for i, log := range catchup.Entries {
-			catchupCommands[i] = &rpc.LogEntry{
-				Data: log.Commands,
-			}
-		}
-		reqs[nodeID] = &rpc.AppendEntriesRequest{
-			Term:         currentTerm,
-			LeaderId:     n.NodeId,
-			PrevLogIndex: catchup.LastLogIndex,
-			PrevLogTerm:  catchup.LastLogTerm,
-			Entries:      catchupCommands,
-			LeaderCommit: n.getCommitIdx(),
-		}
-	}
-
-	ctxTimeout, cancel := context.WithTimeout(ctx, n.cfg.GetRPCRequestTimeout())
-	defer cancel()
-
-	resp, err := n.consensus.ConsensusAppendEntries(ctxTimeout, reqs, n.CurrentTerm)
-	if err != nil {
-		n.logger.Error("error in sending append entries to one node", zap.Error(err))
-		return JobResult{ShallDegrade: false}, err
-	}
-	if resp.Success {
-		n.logger.Info("append entries success", zap.String("requestID", requestID))
-		return JobResult{ShallDegrade: false}, nil
-	} else {
-		if resp.Term > currentTerm {
-			n.logger.Warn("peer's term is greater than current term", zap.String("requestID", requestID))
-			return JobResult{
-				ShallDegrade: true,
-				VotedFor:     resp.PeerNodeIDWithHigherTerm,
-				FromTerm:     TermRank(currentTerm),
-				ToTerm:       TermRank(resp.Term),
-			}, nil
-		} else {
-			return JobResult{ShallDegrade: false}, errors.New("append entries failed, shall retry")
-		}
-	}
-}
 
 // happy path: 1) the leader is alive and the followers are alive (done)
 // problem-1: the leader is alive but minority followers are dead -> can be handled by the retry mechanism
@@ -268,7 +197,7 @@ func (n *nodeImpl) syncDoHeartbeat(ctx context.Context) (JobResult, error) {
 // problem-3: the leader is stale
 // @return: shall degrade to follower or not, and the error
 // todo: warning: this function doesn't change the state inside it right now
-func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*utils.ClientCommandInternalReq) (JobResult, error) {
+func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*utils.ClientCommandInternalReq) (UnitResult, error) {
 
 	var subTasksToWait sync.WaitGroup
 	subTasksToWait.Add(2)
@@ -279,11 +208,11 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 	// before the task-1 trying to change the logs and task-2 reading the logs in parallel and we don't know who is faster
 	peerNodeIDs, err := n.membership.GetAllPeerNodeIDs()
 	if err != nil {
-		return JobResult{ShallDegrade: false}, err
+		return UnitResult{ShallDegrade: false}, err
 	}
 	cathupLogsForPeers, err := n.getLogsToCatchupForPeers(peerNodeIDs)
 	if err != nil {
-		return JobResult{ShallDegrade: false}, err
+		return UnitResult{ShallDegrade: false}, err
 	}
 
 	// task1: appends the command to the local as a new entry
@@ -346,7 +275,7 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 	resp := <-respChan
 	if !resp.Success { // no consensus
 		if resp.Term > currentTerm {
-			return JobResult{ShallDegrade: true, Term: TermRank(resp.Term), VotedFor: "Na"}, nil
+			return UnitResult{ShallDegrade: true, Term: TermRank(resp.Term), VotedFor: "Na"}, nil
 		} else {
 			// todo: the unsafe panic is temporarily used for debugging
 			panic("failed append entries, but without not a higher term")
@@ -360,11 +289,9 @@ func (n *nodeImpl) syncDoLogReplication(ctx context.Context, clientCommands []*u
 		for _, clientCommand := range clientCommands {
 			n.leaderApplyCh <- clientCommand
 		}
-		return JobResult{ShallDegrade: false, Term: TermRank(currentTerm)}, nil
+		return UnitResult{ShallDegrade: false, Term: TermRank(currentTerm)}, nil
 	}
 }
-
-
 
 func (n *nodeImpl) getLogsToCatchupForPeers(peerNodeIDs []string) (map[string]log.CatchupLogs, error) {
 	// todo: can be batch reading
