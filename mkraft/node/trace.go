@@ -66,7 +66,7 @@ func (s *stateTrace) add(currentTerm uint32, nodeId string, state NodeState, vot
 }
 
 func (s *stateTrace) serialize(term uint32, nodeId string, state NodeState, voteFor string) string {
-	currentTime := time.Now().Format(time.RFC3339)
+	currentTime := time.Now().Format("2006-01-02T15:04:05.000-0700")
 	return fmt.Sprintf("#%s, term %d, nodeID %s, state %s, vote for %s#\n", currentTime, term, nodeId, state, voteFor)
 }
 
