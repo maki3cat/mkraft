@@ -26,7 +26,6 @@ message RequestVoteRequest {
   string candidate_id = 2;
   uint64 last_log_index = 3;
   uint32 last_log_term = 4;
-  string node_id = 5;
 }
 
 message RequestVoteResponse {

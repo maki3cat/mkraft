@@ -191,9 +191,7 @@ func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInterna
 	req := internalReq.Req
 	candidateLastLogIdx := req.LastLogIndex
 	candidateLastLogTerm := req.LastLogTerm
-	candidateId := req.CandidateId
 	peerTerm := req.Term
-	nodeID := req.NodeId
 
 	resp := new(rpc.RequestVoteResponse)
 	defer func() {
@@ -211,14 +209,14 @@ func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInterna
 	if n.CurrentTerm < req.Term {
 		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
 		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
-			err := n.ToFollower(candidateId, peerTerm, true)
+			err := n.ToFollower(req.CandidateId, peerTerm, true) // requestVote comes from the candidate, so we use the candidateId
 			if err != nil {
 				n.logger.Error("error in ToFollower", zap.Error(err))
 				panic(err)
 			}
 			resp.Term = n.CurrentTerm
 			resp.VoteGranted = true
-			return UnitResult{ShallDegrade: true, FromTerm: fromTerm, ToTerm: req.Term, VotedFor: nodeID}, nil
+			return UnitResult{ShallDegrade: true, FromTerm: fromTerm, ToTerm: req.Term, VotedFor: req.CandidateId}, nil
 		}
 	}
 

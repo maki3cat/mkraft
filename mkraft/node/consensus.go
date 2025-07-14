@@ -82,9 +82,9 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 			// FAN-IN
 			resp, err := memberHandle.RequestVoteWithRetry(rpcCtx, req)
 			res := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-				Resp:                     resp,
-				Err:                      err,
-				PeerNodeIDWithHigherTerm: memberHandle.GetNodeID(),
+				Resp:       resp,
+				Err:        err,
+				PeerNodeID: memberHandle.GetNodeID(),
 			}
 			fanInChan <- res
 		}()
@@ -114,7 +114,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 					return &MajorityRequestVoteResp{
 						Term:                     resp.Term,
 						VoteGranted:              false,
-						PeerNodeIDWithHigherTerm: res.PeerNodeIDWithHigherTerm,
+						PeerNodeIDWithHigherTerm: res.PeerNodeID,
 					}, nil
 				}
 				if resp.Term == req.Term {
@@ -209,9 +209,9 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 					c.node.DecrPeerIdx(nodeID)
 				}
 				fanInChan <- utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
-					Resp:                     resp,
-					Err:                      nil,
-					PeerNodeIDWithHigherTerm: nodeID,
+					Resp:       resp,
+					Err:        nil,
+					PeerNodeID: nodeID,
 				}
 			}
 		}(nodeID, member)
@@ -239,7 +239,7 @@ func (c *consensus) ConsensusAppendEntries(ctx context.Context, peerReq map[stri
 					return &AppendEntriesConsensusResp{
 						Term:                     resp.Term,
 						Success:                  false,
-						PeerNodeIDWithHigherTerm: wrappedResp.PeerNodeIDWithHigherTerm,
+						PeerNodeIDWithHigherTerm: wrappedResp.PeerNodeID,
 					}, nil
 				}
 				if resp.Term == currentTerm {

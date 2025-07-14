@@ -195,6 +195,8 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestV
 		req := &rpc.RequestVoteRequest{
 			Term:        term,
 			CandidateId: n.NodeId,
+			// LastLogIndex: n.raftLog.GetLastLogIndex(),
+			// LastLogTerm:  n.raftLog.GetLastLogTerm(),
 		}
 		n.logger.Debug("asyncSendElection: sending a request vote to the consensus", zap.String("requestID", requestID), zap.Any("req", req))
 		resp, err := n.consensus.ConsensusRequestVote(electionCtx, req)
