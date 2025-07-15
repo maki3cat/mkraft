@@ -94,7 +94,7 @@ func NewNode(
 	}
 
 	// load persistent state
-	err := node.LoadKeyState()
+	err := node.LoadMetaState()
 	if err != nil {
 		node.logger.Error("error loading current term and voted for", zap.Error(err))
 		panic(err)

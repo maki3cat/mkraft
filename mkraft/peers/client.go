@@ -89,6 +89,7 @@ func (rc *peerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.Request
 	rc.logger.Debug("send SendRequestVote",
 		zap.Any("request", req),
 		zap.String("requestID", requestID))
+	retryCount := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -100,13 +101,18 @@ func (rc *peerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.Request
 				return nil, common.ContextDoneErr()
 			case resp := <-singleResChan:
 				if resp.Err != nil {
-					rc.logger.Error("RequestVoteWithRetry: retry on error:",
-						zap.Error(resp.Err),
-						zap.String("requestID", requestID))
 					deadline, ok := ctx.Deadline()
-					if ok && time.Until(deadline) < rc.cfg.GetRPCDeadlineMargin() {
+					remaining := time.Until(deadline)
+					if ok && remaining < rc.cfg.GetRPCDeadlineMargin() {
 						return nil, resp.Err
 					} else {
+						retryCount++
+						rc.logger.Error("RequestVoteWithRetry: retry on error:",
+							zap.Error(resp.Err),
+							zap.String("requestID", requestID),
+							zap.Duration("remaining", remaining),
+							zap.Int("retryCount", retryCount))
+						retryCount++
 						continue
 					}
 				} else {

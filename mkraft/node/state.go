@@ -20,49 +20,54 @@ const (
 // this is called when the node is a candidate and receives enough votes
 // vote for and term are the same as the candidate's
 func (n *nodeImpl) ToLeader() error {
-	n.logger.Debug("STATE CHANGE: to leader is called")
+	n.logger.Debug("STATE CHANGE: to leader enters")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	n.state = StateLeader
-	n.tracer.add(n.CurrentTerm, n.NodeId, StateLeader, n.VotedFor)
+	n.tracer.add(n.CurrentTerm, n.NodeId, n.state, n.VotedFor)
+	n.logger.Debug("STATE CHANGE: to leader exits")
 	return nil
 }
 
 func (n *nodeImpl) ToCandidate(reEntrant bool) error {
-	n.logger.Debug("STATE CHANGE: to candidate is called")
+	n.logger.Debug("STATE CHANGE: to candidate", zap.Bool("reEntrant", reEntrant))
 	if !reEntrant {
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()
 	}
 
+	prevTerm := n.CurrentTerm
 	term := n.CurrentTerm + 1
 	voteFor := n.NodeId
+
 	err := n.unsafePersistTermAndVoteFor(term, voteFor)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	n.state = StateCandidate
 	n.CurrentTerm = term
 	n.VotedFor = voteFor
-	n.tracer.add(term, n.NodeId, StateCandidate, voteFor)
-
+	n.tracer.add(n.CurrentTerm, n.NodeId, n.state, n.VotedFor)
+	n.logger.Debug("STATE CHANGE: to candidate exits", zap.Uint32("prevTerm", prevTerm), zap.Uint32("newTerm", term), zap.String("voteFor", n.NodeId))
 	return nil
 }
 
 func (n *nodeImpl) ToFollower(voteFor string, newTerm uint32, reEntrant bool) error {
-	n.logger.Debug("STATE CHANGE: to follower is called.")
+	n.logger.Debug("STATE CHANGE: to follower enters.", zap.String("voteFor", voteFor), zap.Uint32("newTerm", newTerm), zap.Bool("reEntrant", reEntrant))
 	if !reEntrant {
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()
 	}
-	n.CurrentTerm = newTerm
-	n.VotedFor = voteFor
 	err := n.unsafePersistTermAndVoteFor(newTerm, voteFor)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	n.tracer.add(newTerm, n.NodeId, StateFollower, voteFor)
+	n.CurrentTerm = newTerm
+	n.VotedFor = voteFor
+	n.state = StateFollower
+	n.tracer.add(n.CurrentTerm, n.NodeId, n.state, n.VotedFor)
+	n.logger.Debug("STATE CHANGE: to follower exits")
 	return nil
 }
 
@@ -99,7 +104,8 @@ func (n *nodeImpl) getTmpStateFilePath() string {
 
 // load from file system, shall be called at the beginning of the node
 // but we don't need to load the state from the file system
-func (n *nodeImpl) LoadKeyState() error {
+func (n *nodeImpl) LoadMetaState() error {
+	n.logger.Debug("STATE CHANGE: load meta state enters")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 	path := n.getStateFilePath()
@@ -135,10 +141,12 @@ func (n *nodeImpl) LoadKeyState() error {
 	}
 	n.CurrentTerm = term
 	n.VotedFor = votedFor
+	n.logger.Debug("STATE CHANGE: load meta state exits")
 	return nil
 }
 
 func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) error {
+	n.logger.Debug("STATE CHANGE: persist term and vote for enters")
 	path := n.getTmpStateFilePath()
 	file, err := os.Create(path)
 	if err != nil {
@@ -168,6 +176,7 @@ func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) erro
 	}
 
 	n.VotedFor = voteFor
+	n.logger.Debug("STATE CHANGE: persist term and vote for exits")
 	return nil
 }
 

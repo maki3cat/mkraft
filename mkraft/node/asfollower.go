@@ -107,9 +107,14 @@ func (n *nodeImpl) handleVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc
 
 	voteGranted := false
 	currentTerm, voteFor := n.CurrentTerm, n.VotedFor
+
 	if currentTerm < newTerm {
 		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
 		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
+			n.logger.Info("handleVoteRequestAsNoLeader: update term",
+				zap.Int("currentTerm", int(currentTerm)),
+				zap.Int("newTerm", int(newTerm)),
+				zap.String("candidateId", candidateId))
 			err := n.ToFollower(candidateId, newTerm, true)
 			if err != nil {
 				n.logger.Error("error in ToFollower", zap.Error(err))
@@ -118,6 +123,8 @@ func (n *nodeImpl) handleVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc
 			voteGranted = true
 			currentTerm = newTerm
 		} else {
+			n.logger.Info("handleVoteRequestAsNoLeader: not update term",
+				zap.String("candidateId", candidateId))
 			voteGranted = false
 		}
 	}

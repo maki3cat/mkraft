@@ -36,7 +36,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 
 	// there is no tikcer in this cancdiate state, and we use this election return as a de facto ticker
 	// the candidate replies on the election to trigger recording of state
-	consensusChan := n.asyncSendElection(ctx)
+	consensusChan := n.asyncSendElection(ctx, false)
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
@@ -68,7 +68,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 				case <-reElectionTimer.C:
 					// the elect maintains the candidate state and vote for, but changes the term
 					n.logger.Debug("ELECTION: candidate timer fires, starts a new election")
-					consensusChan = n.asyncSendElection(ctx)
+					consensusChan = n.asyncSendElection(ctx, true)
 					reElectionTimer.Reset(n.cfg.GetElectionTimeout())
 
 				case <-ctx.Done():
@@ -109,7 +109,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 							n.logger.Warn(
 								"not enough votes, re-elect again",
 								zap.Int("term", int(currentTerm)), zap.String("nId", n.NodeId))
-							consensusChan = n.asyncSendElection(ctx)
+							consensusChan = n.asyncSendElection(ctx, true)
 						}
 					}
 
@@ -159,7 +159,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 // if election timeout elapses: start new election
 // error handling:
 // This function closes the channel when there is and error, and should be returned
-func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestVoteResp {
+func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bool) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	consensusChan := make(chan *MajorityRequestVoteResp, 1)
@@ -174,13 +174,18 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context) chan *MajorityRequestV
 		}
 		return consensusChan
 	} else {
-		err := n.ToCandidate(true)
-		if err != nil {
-			n.logger.Error("asyncSendElection: error in ToCandidate", zap.String("requestID", requestID), zap.Error(err))
-			consensusChan <- &MajorityRequestVoteResp{
-				Err: err,
+		if updateCandidateTerm {
+			n.logger.Debug("asyncSendElection: updating candidate term", zap.String("requestID", requestID))
+			err := n.ToCandidate(true)
+			if err != nil {
+				n.logger.Error("asyncSendElection: error in ToCandidate", zap.String("requestID", requestID), zap.Error(err))
+				consensusChan <- &MajorityRequestVoteResp{
+					Err: err,
+				}
+				return consensusChan
 			}
-			return consensusChan
+		} else {
+			n.logger.Debug("asyncSendElection: not updating candidate term", zap.String("requestID", requestID))
 		}
 	}
 
