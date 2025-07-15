@@ -86,8 +86,8 @@ func NewNode(
 
 		commitIndex: 0,
 		lastApplied: 0,
-		nextIndex:   make(map[string]uint64, 6),
-		matchIndex:  make(map[string]uint64, 6),
+		nextIndex:   make(map[string]uint64, 20), // should be enough for the cluster
+		matchIndex:  make(map[string]uint64, 20),
 
 		stateFileLock: &sync.Mutex{},
 		tracer:        NewStateTrace(logger, cfg.GetDataDir()),
@@ -106,6 +106,9 @@ func NewNode(
 		node.logger.Error("error loading index", zap.Error(err))
 		panic(err)
 	}
+
+	// give the node to the consensus for callbacks
+	node.consensus.SetNodeToUpdateOn(node)
 	return node
 }
 

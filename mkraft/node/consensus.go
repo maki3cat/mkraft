@@ -24,6 +24,8 @@ type Consensus interface {
 	// but since this system handles appendEnrines once a time in a serial way
 	// I don't think we need to worry about the explosion of goroutines
 	ConsensusAppendEntries(ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error)
+
+	SetNodeToUpdateOn(node Node)
 }
 
 type consensus struct {
@@ -32,12 +34,15 @@ type consensus struct {
 	membership peers.Membership
 }
 
-func NewConsensus(node Node, logger *zap.Logger, membership peers.Membership) Consensus {
+func NewConsensus(logger *zap.Logger, membership peers.Membership) Consensus {
 	return &consensus{
-		node:       node,
 		logger:     logger,
 		membership: membership,
 	}
+}
+
+func (c *consensus) SetNodeToUpdateOn(node Node) {
+	c.node = node
 }
 
 func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
