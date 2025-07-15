@@ -38,24 +38,30 @@ I feel unit-testing for this kind of system engineering project is useless for m
 ## The Implementation Designs and Models
 
 
-the implementation architecture
+### general architecture
 
 <a href="img/impl_design_v1.jpg">
   <img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
 </a>
 
-the meta-state machine
+### the meta-state machine
 
 <a href="img/impl_design_state_v2.jpg">
   <img src="img/impl_design_state_v2.jpg" alt="design-v1" align="right">
 </a>
 
-the as-leader implementation
-
+### the as-leader implementation
 
 <a href="img/impl_design_asleader.jpg">
   <img src="img/impl_design_asleader.jpg" alt="design-v1" align="right">
 </a>
+
+### two kinds of goroutine-management in this project
+
+<a href="img/impl_goroutine_management.jpg">
+  <img src="img/impl_goroutine_management.jpg" alt="design-v1" align="right">
+</a>
+
 
 ## Invariants/Properties to hold in any condition
 

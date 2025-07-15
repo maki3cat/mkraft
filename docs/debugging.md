@@ -1,3 +1,4 @@
+## Debuggging Journal
 
 
 #### (No.2) Panic on State not Follower
