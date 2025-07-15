@@ -35,7 +35,6 @@ func (h *Handlers) RequestVote(ctx context.Context, in *pb.RequestVoteRequest) (
 		Req:      in,
 		RespChan: respChan,
 	}
-	// todo: should send the ctx into raft server so that it can notice the context is done
 	h.node.VoteRequest(internalReq)
 	resp := <-respChan
 	h.logger.Debug("RequestVote: get response from raft server", zap.Any("resp", resp))

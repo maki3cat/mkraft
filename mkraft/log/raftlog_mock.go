@@ -113,18 +113,18 @@ func (mr *MockRaftLogsMockRecorder) GetTermByIndex(index any) *gomock.Call {
 }
 
 // ReadLogsInBatchFromIdx mocks base method.
-func (m *MockRaftLogs) ReadLogsInBatchFromIdx(index uint64) ([]*RaftLogEntry, error) {
+func (m *MockRaftLogs) ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadLogsInBatchFromIdx", index)
+	ret := m.ctrl.Call(m, "ReadLogsInBatchFromIdx", nextIdx)
 	ret0, _ := ret[0].([]*RaftLogEntry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadLogsInBatchFromIdx indicates an expected call of ReadLogsInBatchFromIdx.
-func (mr *MockRaftLogsMockRecorder) ReadLogsInBatchFromIdx(index any) *gomock.Call {
+func (mr *MockRaftLogsMockRecorder) ReadLogsInBatchFromIdx(nextIdx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadLogsInBatchFromIdx", reflect.TypeOf((*MockRaftLogs)(nil).ReadLogsInBatchFromIdx), index)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadLogsInBatchFromIdx", reflect.TypeOf((*MockRaftLogs)(nil).ReadLogsInBatchFromIdx), nextIdx)
 }
 
 // UpdateLogsInBatch mocks base method.

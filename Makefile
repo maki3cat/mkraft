@@ -50,7 +50,7 @@ integration-test: build
 	./bin/mkraft -c ./config/local/node2.yaml > ./data/node2/node.log 2>&1 & echo $$! > ./data/node2/node.pid
 	./bin/mkraft -c ./config/local/node3.yaml > ./data/node3/node.log 2>&1 & echo $$! > ./data/node3/node.pid
 	echo "Nodes running for 30 seconds..."
-	sleep 20
+	sleep 60
 	echo "Stopping nodes..."
 	-kill -15 $$(cat ./data/node1/node.pid)
 	-kill -15 $$(cat ./data/node2/node.pid)

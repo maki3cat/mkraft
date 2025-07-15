@@ -73,6 +73,8 @@ func (n *nodeImpl) syncSendAppendEntries(ctx context.Context, clientCommands []*
 	// granular lock -2: check the state again before sending the request
 	respChan := make(chan *AppendEntriesConsensusResp, 1)
 	errorChanTask2 := make(chan error, 1)
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, n.cfg.GetRPCRequestTimeout()*3) // 3 times the deadline
+	defer timeoutCancel()
 	go func(ctx context.Context) {
 		defer subTasksToWait.Done()
 		newCommands := make([]*rpc.LogEntry, len(clientCommands))
@@ -102,7 +104,7 @@ func (n *nodeImpl) syncSendAppendEntries(ctx context.Context, clientCommands []*
 		resp, err := n.consensus.ConsensusAppendEntries(ctx, reqs, currentTerm)
 		respChan <- resp
 		errorChanTask2 <- err
-	}(ctx)
+	}(timeoutCtx)
 
 	subTasksToWait.Wait()
 	if err := <-errorChanTask1; err != nil {
@@ -228,19 +230,18 @@ func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInterna
 
 // ---------------------------------------the helper functions for the unit-------------------------------------
 func (n *nodeImpl) helperForCatchupLogs(peerNodeIDs []string) (map[string]log.CatchupLogs, error) {
+	n.logger.Debug("helperForCatchupLogs enters", zap.Strings("peerNodeIDs", peerNodeIDs))
 	result := make(map[string]log.CatchupLogs)
 	for _, peerNodeID := range peerNodeIDs {
 		nextID := n.getPeersNextIndex(peerNodeID)
 		logs, err := n.raftLog.ReadLogsInBatchFromIdx(nextID)
 		if err != nil {
-			n.logger.Error("failed to get logs from index", zap.Error(err))
-			return nil, err
+			panic(err)
 		}
 		prevLogIndex := nextID - 1
-		prevTerm, error := n.raftLog.GetTermByIndex(prevLogIndex)
-		if error != nil {
-			n.logger.Error("failed to get term by index", zap.Error(error))
-			return nil, error
+		prevTerm, err := n.raftLog.GetTermByIndex(prevLogIndex)
+		if err != nil {
+			panic(err)
 		}
 		result[peerNodeID] = log.CatchupLogs{
 			LastLogIndex: prevLogIndex,

@@ -44,11 +44,11 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
 
 	defer func() { // gracefully exit for follower state is easy
-		n.logger.Info("worker is exiting the follower state")
+		n.logger.Info("node is exiting the follower state")
 		electionTicker.Stop()
 		workerCancel()
 		workerWaitGroup.Wait() // cancel only closes the Done channel, it doesn't wait for the worker to exit
-		n.logger.Info("follower worker exited the follower state successfully")
+		n.logger.Info("node has exited the follower state successfully")
 	}()
 
 	for {
@@ -107,9 +107,14 @@ func (n *nodeImpl) handleVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc
 
 	voteGranted := false
 	currentTerm, voteFor := n.CurrentTerm, n.VotedFor
+
 	if currentTerm < newTerm {
 		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
 		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
+			n.logger.Info("handleVoteRequestAsNoLeader: update term",
+				zap.Int("currentTerm", int(currentTerm)),
+				zap.Int("newTerm", int(newTerm)),
+				zap.String("candidateId", candidateId))
 			err := n.ToFollower(candidateId, newTerm, true)
 			if err != nil {
 				n.logger.Error("error in ToFollower", zap.Error(err))
@@ -118,6 +123,8 @@ func (n *nodeImpl) handleVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc
 			voteGranted = true
 			currentTerm = newTerm
 		} else {
+			n.logger.Info("handleVoteRequestAsNoLeader: not update term",
+				zap.String("candidateId", candidateId))
 			voteGranted = false
 		}
 	}

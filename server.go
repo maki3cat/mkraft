@@ -33,9 +33,8 @@ func NewServer(cfg *common.Config, logger *zap.Logger) (*Server, error) {
 	raftLog := log.NewRaftLogsImplAndLoad(cfg.GetDataDir(), logger, nil)
 	statemachine := plugs.NewStateMachineNoOpImpl()
 
-	var n node.Node
-	consensus := node.NewConsensus(n, logger, membership)
-	n = node.NewNode(nodeID, cfg, logger, membership, statemachine, raftLog, consensus)
+	consensus := node.NewConsensus(logger, membership)
+	n := node.NewNode(nodeID, cfg, logger, membership, statemachine, raftLog, consensus)
 
 	handlers := mkraft.NewHandlers(logger, n)
 

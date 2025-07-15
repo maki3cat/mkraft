@@ -86,15 +86,15 @@ func NewNode(
 
 		commitIndex: 0,
 		lastApplied: 0,
-		nextIndex:   make(map[string]uint64, 6),
-		matchIndex:  make(map[string]uint64, 6),
+		nextIndex:   make(map[string]uint64, 20), // should be enough for the cluster
+		matchIndex:  make(map[string]uint64, 20),
 
 		stateFileLock: &sync.Mutex{},
 		tracer:        NewStateTrace(logger, cfg.GetDataDir()),
 	}
 
 	// load persistent state
-	err := node.LoadKeyState()
+	err := node.LoadMetaState()
 	if err != nil {
 		node.logger.Error("error loading current term and voted for", zap.Error(err))
 		panic(err)
@@ -106,6 +106,9 @@ func NewNode(
 		node.logger.Error("error loading index", zap.Error(err))
 		panic(err)
 	}
+
+	// give the node to the consensus for callbacks
+	node.consensus.SetNodeToUpdateOn(node)
 	return node
 }
 
@@ -232,44 +235,3 @@ func (n *nodeImpl) ClientCommand(req *utils.ClientCommandInternalReq) {
 // Restriction: Raft implements this by the election mechanism, i.e., the leader selected shall have all the committed log entries of previous leaders;
 // Impementation: a node cannot vote for a candidate that has 1) lower term of last log entry, or 2) same term of last log entry but lower index of last log entry.
 // return: (voteGranted, shouldUpdateCurrentTermAndVoteFor)
-func (n *nodeImpl) grantVote(candidateLastLogIdx uint64, candidateLastLogTerm, newTerm uint32, candidateId string) bool {
-
-	// this should be the state change check and changes should be atomic
-	n.stateRWLock.RLock()
-	defer n.stateRWLock.RUnlock()
-
-	currentTerm, voteFor := n.CurrentTerm, n.VotedFor
-	if currentTerm < newTerm {
-		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
-		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
-			err := n.ToFollower(candidateId, newTerm, true)
-			if err != nil {
-				n.logger.Error("error in ToFollower", zap.Error(err))
-				panic(err)
-			}
-			return true
-		} else {
-			return false
-		}
-	}
-
-	// empty voteFor should not be granted, because it may be learned from the new leader without voting for it
-	if currentTerm == newTerm && voteFor == candidateId {
-		return true
-	}
-	return false
-}
-
-// TODO: key problem
-// grant vote changes the state of the node directly
-// if we update the state in this low level, at this function, but update the state in the main loop in other scenarios,
-// this state management will be in a mess
-func (n *nodeImpl) handleVoteRequest(req *rpc.RequestVoteRequest) *rpc.RequestVoteResponse {
-	voteGranted := n.grantVote(req.LastLogIndex, req.LastLogTerm, req.Term, req.CandidateId)
-	currentTerm, _, _ := n.getKeyState()
-	return &rpc.RequestVoteResponse{
-		Term: currentTerm,
-		// implementation gap: I think there is no need to differentiate the updated currentTerm or the previous currentTerm
-		VoteGranted: voteGranted,
-	}
-}
