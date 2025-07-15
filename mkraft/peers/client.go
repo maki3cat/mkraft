@@ -144,6 +144,7 @@ func (rc *peerClient) asyncCallRequestVote(ctx context.Context, req *rpc.Request
 }
 
 func (rc *peerClient) AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
+	rc.logger.Debug("sending append entries", zap.Any("req", req))
 	const maxRetries = 3
 	var lastErr error
 

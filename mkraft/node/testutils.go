@@ -15,7 +15,7 @@ import (
 func newMockNodeWithConsensus(t *testing.T, membership peers.Membership) (*nodeImpl, *gomock.Controller) {
 	allMockedNode, ctrl := newMockNode(t)
 	allMockedNode.membership = membership
-	allMockedNode.consensus = NewConsensus(allMockedNode, zap.NewNop(), membership)
+	allMockedNode.consensus = NewConsensus(zap.NewNop(), membership)
 	return allMockedNode, ctrl
 }
 

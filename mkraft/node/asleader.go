@@ -120,9 +120,11 @@ func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct
 			// task1: send the heartbeat -> as leader, may degrade to follower
 			case <-tickerForHeartbeat.C:
 				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
+				n.logger.Debug("sending heartbeat")
 				singleJobResult, err := n.syncSendHeartbeat(ctx)
 				if err != nil {
-					n.logger.Error("error in sending heartbeat, omit it for next retry", zap.Error(err))
+					// right now we panic all the time
+					panic(err)
 				}
 				if singleJobResult.ShallDegrade {
 					close(degradeChan)
@@ -134,9 +136,9 @@ func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct
 				batchingSize := n.cfg.GetRaftNodeRequestBufferSize() - 1
 				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
 				clientCommands = append(clientCommands, clientCmd)
+				n.logger.Debug("sending append entries", zap.Int("clientCommandsLen", len(clientCommands)))
 				singleJobResult, err := n.syncSendAppendEntries(clientCmd.Ctx, clientCommands)
 				if err != nil {
-					// todo: as is same with most other panics, temporary solution, shall handle the error properly
 					panic(err)
 				}
 				if singleJobResult.ShallDegrade {

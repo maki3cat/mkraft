@@ -70,3 +70,15 @@ func (mr *MockConsensusMockRecorder) ConsensusRequestVote(ctx, request any) *gom
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsensusRequestVote", reflect.TypeOf((*MockConsensus)(nil).ConsensusRequestVote), ctx, request)
 }
+
+// SetNodeToUpdateOn mocks base method.
+func (m *MockConsensus) SetNodeToUpdateOn(node Node) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetNodeToUpdateOn", node)
+}
+
+// SetNodeToUpdateOn indicates an expected call of SetNodeToUpdateOn.
+func (mr *MockConsensusMockRecorder) SetNodeToUpdateOn(node any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeToUpdateOn", reflect.TypeOf((*MockConsensus)(nil).SetNodeToUpdateOn), node)
+}
