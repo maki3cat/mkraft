@@ -26,7 +26,7 @@ type RaftLogs interface {
 	// need to handle partial writes failure
 	AppendLogsInBatch(ctx context.Context, commandList [][]byte, term uint32) error
 	UpdateLogsInBatch(ctx context.Context, preLogIndex uint64, commandList [][]byte, term uint32) error
-	ReadLogsInBatchFromIdx(index uint64) ([]*RaftLogEntry, error) // the index is included
+	ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, error) // the index is included
 
 	// logIndex starts from 1, so the first log is at index 1
 	GetLastLogIdxAndTerm() (uint64, uint32)
@@ -121,15 +121,21 @@ func (rl *raftLogs) GetLastLogIdx() uint64 {
 }
 
 // index is included
-func (rl *raftLogs) ReadLogsInBatchFromIdx(index uint64) ([]*RaftLogEntry, error) {
+func (rl *raftLogs) ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, error) {
+	rl.logger.Debug("ReadLogsInBatchFromIdx enters", zap.Uint64("nextIdx", nextIdx))
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
-	sliceIndex := int(index) - 1
-	if sliceIndex < 0 || sliceIndex >= len(rl.logs) {
-		return nil, fmt.Errorf("invalid index: %d", index)
+	sliceNextIndex := int(nextIdx) - 1
+	if sliceNextIndex < 0 || sliceNextIndex > len(rl.logs) {
+		return nil, fmt.Errorf("invalid index: %d", nextIdx)
 	}
-	logs := make([]*RaftLogEntry, len(rl.logs)-sliceIndex)
-	copy(logs, rl.logs[sliceIndex:len(rl.logs)])
+	// this means the peer has already caught up with the leader
+	if sliceNextIndex == len(rl.logs) {
+		return nil, nil
+	}
+	logs := make([]*RaftLogEntry, len(rl.logs)-sliceNextIndex)
+	copy(logs, rl.logs[sliceNextIndex:len(rl.logs)])
+	rl.logger.Debug("ReadLogsInBatchFromIdx exits", zap.Int("logsLen", len(logs)))
 	return logs, nil
 }
 
