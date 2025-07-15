@@ -46,7 +46,7 @@ func main() {
 	clients := make([]rpc.RaftServiceClient, len(nodeAddrs))
 	conns := make([]*grpc.ClientConn, len(nodeAddrs))
 	for i, addr := range nodeAddrs {
-		conn, err := grpc.NewClient(addr)
+		conn, err := grpc.NewClient(addr, grpc.WithInsecure())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to connect to %s: %v\n", addr, err)
 			os.Exit(1)
