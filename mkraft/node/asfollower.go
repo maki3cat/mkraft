@@ -44,11 +44,11 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
 
 	defer func() { // gracefully exit for follower state is easy
-		n.logger.Info("worker is exiting the follower state")
+		n.logger.Info("node is exiting the follower state")
 		electionTicker.Stop()
 		workerCancel()
 		workerWaitGroup.Wait() // cancel only closes the Done channel, it doesn't wait for the worker to exit
-		n.logger.Info("follower worker exited the follower state successfully")
+		n.logger.Info("node has exited the follower state successfully")
 	}()
 
 	for {

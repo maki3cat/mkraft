@@ -205,6 +205,11 @@ func (rl *raftLogs) UpdateLogsInBatch(ctx context.Context, preLogIndex uint64, c
 }
 
 func (rl *raftLogs) CheckPreLog(preLogIndex uint64, term uint32) bool {
+	rl.logger.Debug("CheckPreLog enters", zap.Uint64("preLogIndex", preLogIndex), zap.Uint32("term", term))
+	// this means the leader has no logs, so it is always true
+	if preLogIndex == 0 {
+		return true
+	}
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	return preLogIndex == uint64(len(rl.logs)) && rl.logs[preLogIndex-1].Term == uint32(term)
