@@ -12,30 +12,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func newMockNodeWithConsensus(t *testing.T, membership peers.Membership) (*nodeImpl, *gomock.Controller) {
-	allMockedNode, ctrl := newMockNode(t)
-	allMockedNode.membership = membership
-	allMockedNode.consensus = NewConsensus(zap.NewNop(), membership)
-	return allMockedNode, ctrl
-}
-
-func newMockNodeWithNoExpectations(t *testing.T) (*nodeImpl, *gomock.Controller) {
-	ctrl := gomock.NewController(t)
-	mockRaftLog := log.NewMockRaftLogs(ctrl)
-	config := common.GetDefaultConfig()
-	config.SetDataDir("./tmp/")
-	err := os.MkdirAll(config.GetDataDir(), 0755)
-	if err != nil {
-		t.Fatalf("failed to create data dir: %v", err)
-	}
-	membership := peers.NewMockMembership(ctrl)
-	statemachine := plugs.NewMockStateMachine(ctrl)
-	consensus := NewMockConsensus(ctrl)
-	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog, consensus)
-	node := n.(*nodeImpl)
-	return node, ctrl
-}
-
 func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 	ctrl := gomock.NewController(t)
 
@@ -53,6 +29,7 @@ func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 	membership := peers.NewMockMembership(ctrl)
 	statemachine := plugs.NewMockStateMachine(ctrl)
 	consensus := NewMockConsensus(ctrl)
+	consensus.EXPECT().SetNodeToUpdateOn(gomock.Any()).AnyTimes()
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog, consensus)
 	node := n.(*nodeImpl)

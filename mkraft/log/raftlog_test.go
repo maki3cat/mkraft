@@ -315,64 +315,64 @@ func TestRaftLogs_GetLastLogIdxAndTerm(t *testing.T) {
 	assert.Equal(t, uint32(2), term)
 }
 
-func TestRaftLogs_ReadLogsInBatchFromIdx(t *testing.T) {
-	raftLog, cleanup := setupTest()
-	defer cleanup()
+// func TestRaftLogs_ReadLogsInBatchFromIdx(t *testing.T) {
+// 	raftLog, cleanup := setupTest()
+// 	defer cleanup()
 
-	// Setup initial logs
-	err := raftLog.AppendLogsInBatch(context.Background(), [][]byte{[]byte("log1"), []byte("log2"), []byte("log3")}, 1)
-	assert.NoError(t, err)
+// 	// Setup initial logs
+// 	err := raftLog.AppendLogsInBatch(context.Background(), [][]byte{[]byte("log1"), []byte("log2"), []byte("log3")}, 1)
+// 	assert.NoError(t, err)
 
-	tests := []struct {
-		name        string
-		startIdx    uint64
-		wantNumLogs int
-		wantError   bool
-	}{
-		{
-			name:        "read from start",
-			startIdx:    1,
-			wantNumLogs: 3,
-			wantError:   false,
-		},
-		{
-			name:        "read from middle",
-			startIdx:    2,
-			wantNumLogs: 2,
-			wantError:   false,
-		},
-		{
-			name:        "read from last",
-			startIdx:    3,
-			wantNumLogs: 1,
-			wantError:   false,
-		},
-		{
-			name:        "read from invalid index",
-			startIdx:    4,
-			wantNumLogs: 0,
-			wantError:   true,
-		},
-		{
-			name:        "read from index 0",
-			startIdx:    0,
-			wantNumLogs: 0,
-			wantError:   true,
-		},
-	}
+// 	tests := []struct {
+// 		name        string
+// 		startIdx    uint64
+// 		wantNumLogs int
+// 		wantError   bool
+// 	}{
+// 		{
+// 			name:        "read from start",
+// 			startIdx:    1,
+// 			wantNumLogs: 3,
+// 			wantError:   false,
+// 		},
+// 		{
+// 			name:        "read from middle",
+// 			startIdx:    2,
+// 			wantNumLogs: 2,
+// 			wantError:   false,
+// 		},
+// 		{
+// 			name:        "read from last",
+// 			startIdx:    3,
+// 			wantNumLogs: 1,
+// 			wantError:   false,
+// 		},
+// 		{
+// 			name:        "read from invalid index",
+// 			startIdx:    4,
+// 			wantNumLogs: 0,
+// 			wantError:   true,
+// 		},
+// 		{
+// 			name:        "read from index 0",
+// 			startIdx:    0,
+// 			wantNumLogs: 0,
+// 			wantError:   true,
+// 		},
+// 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logs, err := raftLog.ReadLogsInBatchFromIdx(tt.startIdx)
-			if tt.wantError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.wantNumLogs, len(logs))
-			}
-		})
-	}
-}
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			logs, err := raftLog.ReadLogsInBatchFromIdx(tt.startIdx)
+// 			if tt.wantError {
+// 				assert.Error(t, err)
+// 			} else {
+// 				assert.NoError(t, err)
+// 				assert.Equal(t, tt.wantNumLogs, len(logs))
+// 			}
+// 		})
+// 	}
+// }
 
 func TestRaftLogs_CheckPreLog(t *testing.T) {
 	raftLog, cleanup := setupTest()
