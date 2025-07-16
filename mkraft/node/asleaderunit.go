@@ -14,9 +14,9 @@ import (
 type UnitResult struct {
 	ShallDegrade bool
 	// if the shallDegrade is true, these must be filled in
-	VotedFor string
-	FromTerm uint32
-	ToTerm   uint32
+	// VotedFor string
+	// FromTerm uint32
+	// ToTerm   uint32
 }
 
 // ---------------------------------------the sender units for the leader-------------------------------------
@@ -126,7 +126,7 @@ func (n *nodeImpl) syncSendAppendEntries(ctx context.Context, clientCommands []*
 				panic("not sure how to handle the stale response")
 			}
 			n.ToFollower(resp.PeerNodeIDWithHigherTerm, resp.Term, true)
-			return UnitResult{ShallDegrade: true, ToTerm: resp.Term, FromTerm: currentTerm, VotedFor: resp.PeerNodeIDWithHigherTerm}, nil
+			return UnitResult{ShallDegrade: true}, nil
 		} else {
 			panic("failed append entries, but without not a higher term")
 		}
@@ -152,6 +152,8 @@ func (n *nodeImpl) syncSendHeartbeat(ctx context.Context) (UnitResult, error) {
 // critical section: readwrite the meta-state, protected by the stateRWLock
 // fast, no IO
 func (n *nodeImpl) recvAppendEntriesAsLeader(internalReq *utils.AppendEntriesInternalReq) (UnitResult, error) {
+	requestID := common.GetRequestID(internalReq.Ctx)
+	n.logger.Debug("recvAppendEntriesAsLeader: received an append entries request", zap.Any("req", internalReq.Req), zap.String("requestID", requestID))
 	req := internalReq.Req
 	reqTerm := req.Term
 	resp := new(rpc.AppendEntriesResponse)
@@ -160,23 +162,27 @@ func (n *nodeImpl) recvAppendEntriesAsLeader(internalReq *utils.AppendEntriesInt
 			Resp: resp,
 			Err:  nil,
 		}
+		n.logger.Debug("recvAppendEntriesAsLeader: returned an append entries response", zap.Any("resp", resp), zap.String("requestID", requestID))
 	}()
 
 	// protect the state read/write
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
-	fromState := n.CurrentTerm
 
 	if reqTerm > n.CurrentTerm {
 		n.ToFollower(req.LeaderId, reqTerm, true)
-		resp.Term = reqTerm
 		// implementation gap:
 		// maki: this may be a very tricky design in implementation,
 		// but this simplifies the logic here
 		// 3rd reply the response, we directly reject, and fix the log after
 		// the leader degrade to follower
+
+		// todo: tricky case
+		// so this gives rise to a case the leader gets false in appendEntries but the term is same
+		// the leader should retry the appendEntries for 3 times, if still false, should fail the clientCommands?
 		resp.Success = false
-		return UnitResult{ShallDegrade: true, FromTerm: fromState, ToTerm: reqTerm, VotedFor: req.LeaderId}, nil
+		resp.Term = reqTerm
+		return UnitResult{ShallDegrade: true}, nil
 	} else if reqTerm < n.CurrentTerm {
 		resp.Term = n.CurrentTerm
 		resp.Success = false
@@ -191,10 +197,6 @@ func (n *nodeImpl) recvAppendEntriesAsLeader(internalReq *utils.AppendEntriesInt
 func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInternalReq) (UnitResult, error) {
 
 	req := internalReq.Req
-	candidateLastLogIdx := req.LastLogIndex
-	candidateLastLogTerm := req.LastLogTerm
-	peerTerm := req.Term
-
 	resp := new(rpc.RequestVoteResponse)
 	defer func() {
 		internalReq.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
@@ -207,18 +209,17 @@ func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInterna
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 
-	fromTerm := n.CurrentTerm
 	if n.CurrentTerm < req.Term {
 		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
-		if (candidateLastLogTerm > lastLogTerm) || (candidateLastLogTerm == lastLogTerm && candidateLastLogIdx >= lastLogIdx) {
-			err := n.ToFollower(req.CandidateId, peerTerm, true) // requestVote comes from the candidate, so we use the candidateId
+		if (req.LastLogTerm > lastLogTerm) || (req.LastLogTerm == lastLogTerm && req.LastLogIndex >= lastLogIdx) {
+			err := n.ToFollower(req.CandidateId, req.Term, true) // requestVote comes from the candidate, so we use the candidateId
 			if err != nil {
 				n.logger.Error("error in ToFollower", zap.Error(err))
 				panic(err)
 			}
 			resp.Term = n.CurrentTerm
 			resp.VoteGranted = true
-			return UnitResult{ShallDegrade: true, FromTerm: fromTerm, ToTerm: req.Term, VotedFor: req.CandidateId}, nil
+			return UnitResult{ShallDegrade: true}, nil
 		}
 	}
 

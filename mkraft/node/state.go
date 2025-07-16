@@ -55,6 +55,10 @@ func (n *nodeImpl) ToCandidate(reEntrant bool) error {
 
 func (n *nodeImpl) ToFollower(voteFor string, newTerm uint32, reEntrant bool) error {
 	n.logger.Debug("STATE CHANGE: to follower enters.", zap.String("voteFor", voteFor), zap.Uint32("newTerm", newTerm), zap.Bool("reEntrant", reEntrant))
+	if voteFor == "" {
+		panic("voteFor is empty")
+	}
+
 	if !reEntrant {
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()

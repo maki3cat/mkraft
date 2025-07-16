@@ -41,24 +41,42 @@ clean:
 	rm *.log *.pid
 
 integration-test: build
+	$(MAKE) serverclean
+	$(MAKE) serverstart
+	echo "Nodes running for 30 seconds..."
+	sleep 60
+	$(MAKE) serverstop
+	@ps aux | grep "mkraft"
+	echo "All nodes stopped"
+
+serverclean:
 	echo "Clearning up the node data..."
 	rm -rf ./data/node1/*
 	rm -rf ./data/node2/*
 	rm -rf ./data/node3/*
+
+serverstart: serverclean build
 	echo "Starting mkraft nodes..."
 	./bin/mkraft -c ./config/local/node1.yaml > ./data/node1/node.log 2>&1 & echo $$! > ./data/node1/node.pid
 	./bin/mkraft -c ./config/local/node2.yaml > ./data/node2/node.log 2>&1 & echo $$! > ./data/node2/node.pid
 	./bin/mkraft -c ./config/local/node3.yaml > ./data/node3/node.log 2>&1 & echo $$! > ./data/node3/node.pid
-	echo "Nodes running for 30 seconds..."
-	sleep 60
+
+serverstop:
 	echo "Stopping nodes..."
 	-kill -15 $$(cat ./data/node1/node.pid)
 	-kill -15 $$(cat ./data/node2/node.pid)
 	-kill -15 $$(cat ./data/node3/node.pid)
 	sleep 10
 	rm -f ./data/node1/node.pid ./data/node2/node.pid ./data/node3/node.pid
-	@ps aux | grep "mkraft"
-	echo "All nodes stopped"
+
+clientstart:
+	echo "Starting client..."
+	mkdir -p ./data/client
+	./bin/mkraft -c ./config/local/client.yaml > ./data/client/client.log 2>&1 & echo $$! > ./data/client/client.pid
+
+clientstop:
+	echo "Stopping client..."
+	-kill -15 $$(cat ./data/client/client.pid)
 
 verification:
 	echo "verifying leader safety"

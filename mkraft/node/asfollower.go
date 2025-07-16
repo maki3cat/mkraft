@@ -145,6 +145,8 @@ func (n *nodeImpl) handleVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc
 // shall be called when the node is not a leader
 // the raft server is generally single-threaded, so there is no other thread to change the commitIdx
 func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.AppendEntriesRequest) *rpc.AppendEntriesResponse {
+	requestID := common.GetRequestID(ctx)
+	n.logger.Debug("receiveAppendEntriesAsNoLeader: received an append entries request", zap.Any("req", req), zap.String("requestID", requestID))
 
 	var response rpc.AppendEntriesResponse
 	reqTerm := uint32(req.Term)
@@ -173,11 +175,12 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 	// 2. update the term
 	returnedTerm := currentTerm
 	if reqTerm > currentTerm {
-		err := n.ToFollower("", reqTerm, false)
+		err := n.ToFollower(req.LeaderId, reqTerm, false)
 		if err != nil {
 			n.logger.Error("key error: in ToFollower", zap.Error(err))
 			panic(err)
 		}
+		returnedTerm = reqTerm
 	}
 
 	// 3. append logs
@@ -195,10 +198,13 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 			panic(err)
 		}
 	}
-	return &rpc.AppendEntriesResponse{
+
+	resp := &rpc.AppendEntriesResponse{
 		Term:    returnedTerm,
 		Success: true,
 	}
+	n.logger.Debug("receiveAppendEntriesAsNoLeader: returned an append entries response", zap.Any("resp", resp), zap.String("requestID", requestID))
+	return resp
 }
 
 // SHARED BY FOLLOWER AND CANDIDATE
