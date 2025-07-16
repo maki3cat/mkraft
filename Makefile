@@ -41,10 +41,7 @@ clean:
 	rm *.log *.pid
 
 integration-test: build
-	echo "Clearning up the node data..."
-	rm -rf ./data/node1/*
-	rm -rf ./data/node2/*
-	rm -rf ./data/node3/*
+	$(MAKE) serverclean
 	$(MAKE) serverstart
 	echo "Nodes running for 30 seconds..."
 	sleep 60
@@ -52,7 +49,13 @@ integration-test: build
 	@ps aux | grep "mkraft"
 	echo "All nodes stopped"
 
-serverstart:
+serverclean:
+	echo "Clearning up the node data..."
+	rm -rf ./data/node1/*
+	rm -rf ./data/node2/*
+	rm -rf ./data/node3/*
+
+serverstart: serverclean build
 	echo "Starting mkraft nodes..."
 	./bin/mkraft -c ./config/local/node1.yaml > ./data/node1/node.log 2>&1 & echo $$! > ./data/node1/node.pid
 	./bin/mkraft -c ./config/local/node2.yaml > ./data/node2/node.log 2>&1 & echo $$! > ./data/node2/node.pid
