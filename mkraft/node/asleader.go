@@ -121,12 +121,12 @@ func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct
 			case <-tickerForHeartbeat.C:
 				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
 				n.logger.Debug("sending heartbeat")
-				singleJobResult, err := n.syncSendHeartbeat(ctx)
+				unitResult, err := n.syncSendHeartbeat(ctx)
 				if err != nil {
 					// right now we panic all the time
 					panic(err)
 				}
-				if singleJobResult.ShallDegrade {
+				if unitResult.ShallDegrade {
 					close(degradeChan)
 					return
 				}
@@ -137,11 +137,11 @@ func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct
 				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
 				clientCommands = append(clientCommands, clientCmd)
 				n.logger.Debug("sending append entries", zap.Int("clientCommandsLen", len(clientCommands)))
-				singleJobResult, err := n.syncSendAppendEntries(clientCmd.Ctx, clientCommands)
+				unitResult, err := n.syncSendAppendEntries(clientCmd.Ctx, clientCommands)
 				if err != nil {
 					panic(err)
 				}
-				if singleJobResult.ShallDegrade {
+				if unitResult.ShallDegrade {
 					close(degradeChan)
 					return
 				}
@@ -165,22 +165,22 @@ func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan st
 				n.logger.Warn("raft node main context done, exiting")
 				return
 			case internalReq := <-n.requestVoteCh:
-				singleJobResult, err := n.recvRequestVoteAsLeader(internalReq)
+				unitResult, err := n.recvRequestVoteAsLeader(internalReq)
 				if err != nil {
 					n.logger.Error("error in handling request vote", zap.Error(err))
 					panic(err)
 				}
-				if singleJobResult.ShallDegrade {
+				if unitResult.ShallDegrade {
 					close(degradeChan)
 					return
 				}
 			case internalReq := <-n.appendEntryCh:
-				singleJobResult, err := n.recvAppendEntriesAsLeader(internalReq)
+				unitResult, err := n.recvAppendEntriesAsLeader(internalReq)
 				if err != nil {
 					n.logger.Error("error in handling append entries", zap.Error(err))
 					panic(err)
 				}
-				if singleJobResult.ShallDegrade {
+				if unitResult.ShallDegrade {
 					close(degradeChan)
 					return
 				}
