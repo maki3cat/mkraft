@@ -80,6 +80,11 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 					if !ok {
 						panic("consensusChan should never be closed")
 					}
+					if response.Err == common.ErrNotCandidate {
+						n.logger.Warn("the node has is exiting the candidate state")
+						// pass current select
+						continue
+					}
 					reElectionTimer.Reset(n.cfg.GetElectionTimeout())
 					if response.Err != nil {
 						n.logger.Error(
@@ -167,8 +172,7 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bo
 	// check if the node is degraded to follower
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
-	term, state, _ := n.getKeyState()
-	if state == StateFollower {
+	if n.getNodeState() == StateFollower {
 		consensusChan <- &MajorityRequestVoteResp{
 			Err: common.ErrNotCandidate, // todo: test case for this one; and the caller should consume this err
 		}
@@ -196,7 +200,16 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bo
 	// defer electionCancel() // this is not needed, because the ConsensusRequestVote is a shortcut method
 	// and the ctx is called cancelled when the candidate shall degrade to follower
 
-	go func() {
+	// the term may be updated previously
+	term, state, _ := n.getKeyState()
+	if state != StateCandidate {
+		n.logger.Warn("asyncSendElection: node is not in candidate state, returning")
+		consensusChan <- &MajorityRequestVoteResp{
+			Err: common.ErrNotCandidate,
+		}
+		return consensusChan
+	}
+	go func(term uint32) {
 		req := &rpc.RequestVoteRequest{
 			Term:        term,
 			CandidateId: n.NodeId,
@@ -214,6 +227,6 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bo
 			n.logger.Debug("asyncSendElection: received a response from the consensus", zap.String("requestID", requestID), zap.Any("resp", resp))
 			consensusChan <- resp
 		}
-	}()
+	}(term)
 	return consensusChan
 }
