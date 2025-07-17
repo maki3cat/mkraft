@@ -154,28 +154,28 @@ func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) erro
 	path := n.getTmpStateFilePath()
 	file, err := os.Create(path)
 	if err != nil {
+		n.logger.Error("error creating file", zap.String("fileName", path), zap.Error(err))
 		return err
 	}
+	defer file.Close() // always close the file
 
 	entry := serializeKeyState(term, voteFor)
-	_, err = file.WriteString(entry)
-	if err != nil {
+	if _, err = file.WriteString(entry); err != nil {
+		n.logger.Error("error writing to file", zap.String("fileName", path), zap.Error(err))
 		return err
 	}
-
-	err = file.Sync()
-	if err != nil {
+	if file.Sync() != nil {
 		n.logger.Error("error syncing file", zap.String("fileName", path), zap.Error(err))
 		return err
 	}
-	err = file.Close()
-	if err != nil {
+	if file.Close() != nil {
 		n.logger.Error("error closing file", zap.String("fileName", path), zap.Error(err))
 		return err
 	}
 
 	err = os.Rename(path, n.getStateFilePath())
 	if err != nil {
+		n.logger.Error("error renaming file", zap.String("oldFileName", path), zap.String("newFileName", n.getStateFilePath()), zap.Error(err))
 		return err
 	}
 

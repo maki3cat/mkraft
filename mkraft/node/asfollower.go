@@ -173,8 +173,9 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 	}()
 
 	// 2. update the term
+	// is the node is not a leader, we don't need the term to be larger, we only need it to be no-less
 	returnedTerm := currentTerm
-	if reqTerm > currentTerm {
+	if (reqTerm > currentTerm) || (reqTerm == currentTerm && n.state == StateCandidate) {
 		err := n.ToFollower(req.LeaderId, reqTerm, false)
 		if err != nil {
 			n.logger.Error("key error: in ToFollower", zap.Error(err))

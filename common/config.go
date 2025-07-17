@@ -36,6 +36,8 @@ func LoadConfig(filePath string) (*Config, error) {
 		fmt.Println("err", err)
 		return nil, err
 	}
+
+	fmt.Println("cfg", fmt.Sprintf("%+v", cfg))
 	return cfg, nil
 }
 
@@ -72,8 +74,8 @@ const (
 	RPC_REUQEST_TIMEOUT_IN_MS = 100
 	// reference: the Jeff-Dean's number everyone shall know
 	RPC_DEADLINE_MARGIN_IN_MICRO_SEC = 500
-	ELECTION_TIMEOUT_MIN_IN_MS       = 400
-	ELECTION_TIMEOUT_MAX_IN_MS       = 800
+	ELECTION_TIMEOUT_MIN_IN_MS       = 100
+	ELECTION_TIMEOUT_MAX_IN_MS       = 500
 
 	MIN_REMAINING_TIME_FOR_RPC_IN_MS = 150
 

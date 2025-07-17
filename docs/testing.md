@@ -1,12 +1,25 @@
 
+## Correctness
+
+1. ELECTION SAFETY AND EFFICIENCY
+
+efficiency here can be viewed as kind of correctness that a leader should be elected ASAP
+
+| #   | Invariant / Property                                                          | Verification                      |
+| --- | ----------------------------------------------------------------------------- | --------------------------------- |
+| 1   | Only one leader exists for one term (paper)                                   | by logs                           |
+| 2   | When leader is elected, others become followers                               | Partly by logs; partly by manual; |
+| 3   | When election happens, it usually gets the new leader with next term          | by logs                           |
+| 4   | When leader is elected, it usually doesn't change if nothing unstable happens | Partly by logs                    |
+| 5   | The elected leader should be the one with all the committed logs (paper)      | Haven't been auto-checked         |
+
+
 **Key Progress**
 
-General Goal
-1. leader safety (correctness)  (ok, with verifications)
- - invariants, guarded by panics
-2. leader election efficiency, when the leader is out, it takes >= 3 terms to elect the next leader; the expectation is that most of the time the next leader is elected next term;
+
+
 - currently working on
-3. when only one node, it keeps re-election; and it becomes a leader as soon as another node joins;
+1. when only one node, it keeps re-election; and it becomes a leader as soon as another node joins;
 
 - first without client commands
 - 1/2 works currectly with continuous client commands 
