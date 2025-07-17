@@ -8,6 +8,7 @@ It has a lot of work, and I'm happy to receive "donations" in the form of a :sta
 - [Table of Contents](#table-of-contents)
 - [What this Project is About](#what-this-project-is-about)
 - [What I am currently Doing](#what-i-am-currently-doing)
+- [What I am learning from](#what-i-am-learning-from)
 - [Implementation Models](#implementation-models)
   - [the General Arch](#the-general-arch)
   - [the Meta-State Machine](#the-meta-state-machine)
@@ -40,6 +41,11 @@ A Raft implementation to be with a Domain-specific Database:
 - $5.4 Safety
 
 For detailed information on testing, see [docs/testing.md](docs/testing.md). Your feedback on the designs and specific issues described there is highly appreciated.
+
+## What I am learning from
+
+- [tigerbeetle's implementation of vsr](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/internals/vsr.md#protocol-ping-replica-replica)
+- [hashicorp's raft](https://github.com/hashicorp/raft)
 
 
 ## Implementation Models
