@@ -3,12 +3,13 @@
 
 General Goal
 1. leader safety (correctness)  (ok, with verifications)
+ - invariants, guarded by panics
 2. leader election efficiency, when the leader is out, it takes >= 3 terms to elect the next leader; the expectation is that most of the time the next leader is elected next term;
+- currently working on
 3. when only one node, it keeps re-election; and it becomes a leader as soon as another node joins;
 
 - first without client commands
 - 1/2 works currectly with continuous client commands 
-
 
 testing for systems is no simplier than systems themselves.
 
@@ -78,7 +79,6 @@ then that entry will be present in the logs of the LEADERS for all higher-number
 if a server has applied a log entry at a given index to the state machine, 
 no other server will ever apply a different log entry for the same index; 
 
-
 ### Key Mechanisms to maintain the invariants/properties
 
 (1) Voting Restriction ($5.4)
@@ -87,10 +87,6 @@ What is more up-to-date mean:
 - compare the index(length) and term of the last log entry
 - first, the larger term is more updated
 - second, if the last terms are the same, the longer log/larger index is the more up-to-date
-
-
-
-
 
 ## Resilience of Engineerings 
 
