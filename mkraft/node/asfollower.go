@@ -64,6 +64,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					return
 
 				case <-electionTicker.C:
+					n.logger.Info("election timeout, converting to candidate")
 					err := n.ToCandidate(false)
 					if err != nil {
 						n.logger.Error("key error: in fromFollowerToCandidate", zap.Error(err))
