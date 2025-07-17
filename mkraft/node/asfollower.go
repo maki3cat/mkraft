@@ -37,7 +37,10 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
 	workerWaitGroup.Add(2)
-	electionTicker := time.NewTicker(n.cfg.GetElectionTimeout())
+
+	electionTimeout := n.cfg.GetElectionTimeout()
+	n.logger.Info("election timeout", zap.Duration("electionTimeout", electionTimeout))
+	electionTicker := time.NewTicker(electionTimeout)
 	n.noleaderApplySignalCh = make(chan bool, n.cfg.GetRaftNodeRequestBufferSize())
 
 	go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
@@ -74,7 +77,10 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					return
 
 				case requestVoteInternal := <-n.requestVoteCh:
-					electionTicker.Reset(n.cfg.GetElectionTimeout())
+					electionTimeout = n.cfg.GetElectionTimeout()
+					n.logger.Info("election timeout", zap.Duration("electionTimeout", electionTimeout))
+					electionTicker.Reset(electionTimeout)
+
 					resp := n.handleVoteRequestAsNoLeader(requestVoteInternal.Req)
 					wrappedResp := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 						Resp: resp,
@@ -83,7 +89,10 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					requestVoteInternal.RespChan <- &wrappedResp
 
 				case appendEntryInternal := <-n.appendEntryCh:
-					electionTicker.Reset(n.cfg.GetElectionTimeout())
+					electionTimeout = n.cfg.GetElectionTimeout()
+					n.logger.Info("election timeout", zap.Duration("electionTimeout", electionTimeout))
+					electionTicker.Reset(electionTimeout)
+
 					resp := n.receiveAppendEntriesAsNoLeader(ctx, appendEntryInternal.Req)
 					wrappedResp := utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 						Resp: resp,

@@ -67,7 +67,7 @@ var (
 const (
 	RAFT_NODE_REQUEST_BUFFER_SIZE = 500
 
-	LEADER_BUFFER_SIZE            = 1000
+	LEADER_BUFFER_SIZE = 1000
 	// if this is close to election timeout range lower bound, the leader may not be able to send heartbeat to followers in time
 	LEADER_HEARTBEAT_PERIOD_IN_MS = 50
 
@@ -75,7 +75,7 @@ const (
 	RPC_REUQEST_TIMEOUT_IN_MS = 100
 	// reference: the Jeff-Dean's number everyone shall know
 	RPC_DEADLINE_MARGIN_IN_MICRO_SEC = 500
-	ELECTION_TIMEOUT_MIN_IN_MS       = 200
+	ELECTION_TIMEOUT_MIN_IN_MS       = 150
 	ELECTION_TIMEOUT_MAX_IN_MS       = 500
 
 	MIN_REMAINING_TIME_FOR_RPC_IN_MS = 150
@@ -178,7 +178,9 @@ func (c *Config) GetRPCRequestTimeout() time.Duration {
 func (c *Config) GetElectionTimeout() time.Duration {
 	b := c.BasicConfig
 	timeoutRange := b.ElectionTimeoutMaxInMs - b.ElectionTimeoutMinInMs
-	randomMs := rand.Intn(timeoutRange) + ELECTION_TIMEOUT_MIN_IN_MS
+	seed := time.Now().UnixNano() + int64(rand.Intn(1000000))
+	r := rand.New(rand.NewSource(seed))
+	randomMs := r.Intn(timeoutRange) + b.ElectionTimeoutMinInMs
 	return time.Duration(randomMs) * time.Millisecond
 }
 
