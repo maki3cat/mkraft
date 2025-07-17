@@ -164,6 +164,7 @@ func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 // if election timeout elapses: start new election
 // error handling:
 // This function closes the channel when there is and error, and should be returned
+// LOCKED
 func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bool) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
@@ -172,7 +173,8 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bo
 	// check if the node is degraded to follower
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
-	if n.getNodeState() == StateFollower {
+
+	if n.state == StateFollower {
 		consensusChan <- &MajorityRequestVoteResp{
 			Err: common.ErrNotCandidate, // todo: test case for this one; and the caller should consume this err
 		}
@@ -201,8 +203,7 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bo
 	// and the ctx is called cancelled when the candidate shall degrade to follower
 
 	// the term may be updated previously
-	term, state, _ := n.getKeyState()
-	if state != StateCandidate {
+	if n.state != StateCandidate {
 		n.logger.Warn("asyncSendElection: node is not in candidate state, returning")
 		consensusChan <- &MajorityRequestVoteResp{
 			Err: common.ErrNotCandidate,
@@ -227,6 +228,6 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bo
 			n.logger.Debug("asyncSendElection: received a response from the consensus", zap.String("requestID", requestID), zap.Any("resp", resp))
 			consensusChan <- resp
 		}
-	}(term)
+	}(n.CurrentTerm)
 	return consensusChan
 }
