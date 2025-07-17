@@ -44,7 +44,10 @@ For detailed information on testing, see [docs/testing.md](docs/testing.md). You
 
 ## What I am learning from
 
-- [tigerbeetle's implementation of vsr](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/internals/vsr.md#protocol-ping-replica-replica)
+**currently more from**
+- [tigerbeetle's doc of vsr](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/internals/vsr.md#protocol-ping-replica-replica)
+- [tigerbeetle's src of vsr](https://github.com/tigerbeetle/tigerbeetle/tree/main/src/vsr)
+**in the future, will compare to**
 - [hashicorp's raft](https://github.com/hashicorp/raft)
 
 
