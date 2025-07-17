@@ -26,6 +26,7 @@ the control flow of the FOLLOWER is :
 - (CLEANER: worker thread) the cleaner to reject client commands, so this dirty messages don't interfere with the main flow;
 */
 func (n *nodeImpl) RunAsFollower(ctx context.Context) {
+	n.logger.Info("node starts as follower...")
 	if n.getNodeState() != StateFollower {
 		panic("node is not in FOLLOWER state")
 	}
