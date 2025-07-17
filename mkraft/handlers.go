@@ -34,6 +34,7 @@ func (h *Handlers) RequestVote(ctx context.Context, in *pb.RequestVoteRequest) (
 	internalReq := &utils.RequestVoteInternalReq{
 		Req:      in,
 		RespChan: respChan,
+		Ctx:      ctx,
 	}
 	h.node.VoteRequest(internalReq)
 	resp := <-respChan
@@ -54,6 +55,7 @@ func (h *Handlers) AppendEntries(ctx context.Context, in *pb.AppendEntriesReques
 	req := &utils.AppendEntriesInternalReq{
 		Req:      in,
 		RespChan: respChan,
+		Ctx:      ctx,
 	}
 	h.node.AppendEntryRequest(req)
 
@@ -75,6 +77,7 @@ func (h *Handlers) ClientCommand(ctx context.Context, in *pb.ClientCommandReques
 	req := &utils.ClientCommandInternalReq{
 		Req:      in,
 		RespChan: make(chan *utils.RPCRespWrapper[*pb.ClientCommandResponse], 1),
+		Ctx:      ctx,
 	}
 	h.node.ClientCommand(req)
 
