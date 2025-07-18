@@ -22,23 +22,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	leadersByTerm := map[int]map[string]struct{}{} // term → set[nodeID]
-	termsSeen := map[int]bool{}                    // term mentioned at all
-	minTerm, maxTerm := math.MaxInt, math.MinInt   // track range
+	leadersByTerm := map[int]map[string]struct{}{}  // term → set[nodeID]
+	termsSeen := map[int]bool{}                     // term mentioned at all
+	nodeStatesByTerm := map[int]map[string]string{} // term → nodeID → state
+	minTerm, maxTerm := math.MaxInt, math.MinInt    // track range
 
 	for _, path := range os.Args[1:] {
-		if err := processFile(path, leadersByTerm, termsSeen, &minTerm, &maxTerm); err != nil {
+		if err := processFile(path, leadersByTerm, termsSeen, nodeStatesByTerm, &minTerm, &maxTerm); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
 	}
 
-	report(minTerm, maxTerm, termsSeen, leadersByTerm)
+	report(minTerm, maxTerm, termsSeen, leadersByTerm, nodeStatesByTerm)
 }
 
 func processFile(
 	path string,
 	leadersByTerm map[int]map[string]struct{},
 	termsSeen map[int]bool,
+	nodeStatesByTerm map[int]map[string]string,
 	minTerm, maxTerm *int,
 ) error {
 	f, err := os.Open(path)
@@ -66,6 +68,12 @@ func processFile(
 			*maxTerm = termNum
 		}
 
+		// Track node state for this term
+		if nodeStatesByTerm[termNum] == nil {
+			nodeStatesByTerm[termNum] = make(map[string]string)
+		}
+		nodeStatesByTerm[termNum][nodeID] = state
+
 		if state == "Leader" {
 			set := leadersByTerm[termNum]
 			if set == nil {
@@ -82,6 +90,7 @@ func report(
 	minTerm, maxTerm int,
 	termsSeen map[int]bool,
 	leadersByTerm map[int]map[string]struct{},
+	nodeStatesByTerm map[int]map[string]string,
 ) {
 	if len(termsSeen) == 0 {
 		fmt.Println("no terms found in the supplied files")
@@ -94,13 +103,22 @@ func report(
 			continue
 		}
 
-		switch nodes := leadersByTerm[term]; len(nodes) {
+		nodes := leadersByTerm[term]
+		nodeStates := nodeStatesByTerm[term]
+		nodeList := sortedNodeIDs(nodeStates)
+		stateList := make([]string, 0, len(nodeList))
+		for _, node := range nodeList {
+			stateList = append(stateList, nodeStates[node])
+		}
+		stateCol := fmt.Sprintf("[%s]", strings.Join(stateList, ", "))
+
+		switch len(nodes) {
 		case 0:
-			fmt.Printf("term %-6d  NO LEADER\n", term)
+			fmt.Printf("term %-6d  NO LEADER   %s\n", term, stateCol)
 		case 1:
-			fmt.Printf("term %-6d  OK\n", term)
+			fmt.Printf("term %-6d  OK          %s\n", term, stateCol)
 		default:
-			fmt.Printf("term %-6d  MULTIPLE LEADERS: %v\n", term, keys(nodes))
+			fmt.Printf("term %-6d  FAIL        %s\n", term, stateCol)
 		}
 	}
 }
@@ -109,6 +127,15 @@ func keys(set map[string]struct{}) []string {
 	out := make([]string, 0, len(set))
 	for s := range set {
 		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedNodeIDs(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
 	}
 	sort.Strings(out)
 	return out
