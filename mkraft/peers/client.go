@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/encoding/gzip"
+	"google.golang.org/grpc/status"
 
-	"github.com/google/uuid"
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
+	"google.golang.org/grpc/codes"
 )
 
 var _ PeerClient = (*peerClient)(nil)
@@ -30,6 +32,8 @@ type PeerClient interface {
 	AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error)
 
 	GetNodeID() string
+
+	PeerConnCheck(ctx context.Context) bool
 
 	Close() error
 }
@@ -66,6 +70,21 @@ func NewPeerClientImpl(
 	client.conn = conn
 	client.rawClient = rpc.NewRaftServiceClient(conn)
 	return client, nil
+}
+
+func (rc *peerClient) PeerConnCheck(ctx context.Context) bool {
+	// Wrap the SayHello RPC as a ping
+	_, err := rc.rawClient.SayHello(ctx, &rpc.HelloRequest{Name: "ping"})
+	if err != nil {
+		code := status.Code(err)
+		if code == codes.Unavailable {
+			return false
+		}
+		// For other errors, you may want to log or handle differently,
+		// but for now, treat any error as unhealthy.
+		return false
+	}
+	return true
 }
 
 func (rc *peerClient) GetNodeID() string {

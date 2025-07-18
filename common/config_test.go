@@ -19,7 +19,7 @@ basic_config:
   raft_node_request_buffer_size: 123
   rpc_request_timeout_in_ms: 456
   election_timeout_min_in_ms: 1000
-  election_timeout_max_in_ms: 2000
+  election_timeout_max_in_ms: 5000
   leader_heartbeat_period_in_ms: 50
   min_remaining_time_for_rpc_in_ms: 20
   graceful_shutdown_timeout_in_sec: 10
