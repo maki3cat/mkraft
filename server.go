@@ -102,7 +102,7 @@ func (s *Server) Start(ctx context.Context) error {
 	port := s.cfg.GetMembership().CurrentPort
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
+		panic(err)
 	}
 
 	go func() {

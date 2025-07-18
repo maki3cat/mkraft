@@ -44,7 +44,7 @@ integration-test: build
 	$(MAKE) serverclean
 	$(MAKE) serverstart
 	echo "Nodes running for 30 seconds..."
-	sleep 60
+	sleep 30
 	$(MAKE) serverstop
 	@ps aux | grep "mkraft"
 	echo "All nodes stopped"

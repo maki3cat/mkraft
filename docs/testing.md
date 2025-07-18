@@ -1,14 +1,28 @@
 
-**Key Progress**
+https://www.notion.so/Bugs-Journal-2334ef7514ee808ab8cfc4801d362a23?source=copy_link
 
-General Goal
-1. leader safety (correctness)  (ok, with verifications)
-2. leader election efficiency, when the leader is out, it takes >= 3 terms to elect the next leader; the expectation is that most of the time the next leader is elected next term;
-3. when only one node, it keeps re-election; and it becomes a leader as soon as another node joins;
+## Correctness
+
+1. ELECTION SAFETY AND EFFICIENCY
+
+efficiency here can be viewed as kind of correctness that a leader should be elected ASAP
+
+| #   | Invariant / Property                                                                                                            | Verification                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| 1   | Only one leader exists for one term (paper)                                                                                     | by logs                           |
+| 2   | When leader is elected, others become followers                                                                                 | Partly by logs; partly by manual; |
+| 3   | When election happens, it usually gets the new leader with next term                                                            | by logs                           |
+| 4   | When leader is elected, it usually doesn't change if nothing unstable happens                                                   | Partly by logs                    |
+| 5   | The elected leader should be the one with all the committed logs (paper)                                                        | Haven't been auto-checked         |
+| 6   | We don't want more majority nodes to become Candidate; this will slow down the election; this can be tuned by election timeout; | by logs                           |
+
+
+**Key Progress**
+- currently working on
+1. when only one node, it keeps re-election; and it becomes a leader as soon as another node joins;
 
 - first without client commands
 - 1/2 works currectly with continuous client commands 
-
 
 testing for systems is no simplier than systems themselves.
 
@@ -78,7 +92,6 @@ then that entry will be present in the logs of the LEADERS for all higher-number
 if a server has applied a log entry at a given index to the state machine, 
 no other server will ever apply a different log entry for the same index; 
 
-
 ### Key Mechanisms to maintain the invariants/properties
 
 (1) Voting Restriction ($5.4)
@@ -87,10 +100,6 @@ What is more up-to-date mean:
 - compare the index(length) and term of the last log entry
 - first, the larger term is more updated
 - second, if the last terms are the same, the longer log/larger index is the more up-to-date
-
-
-
-
 
 ## Resilience of Engineerings 
 

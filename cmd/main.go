@@ -15,7 +15,6 @@ import (
 )
 
 func main() {
-
 	// config
 	path := "./config/base.yaml"
 	pathInArgs := flag.String("c", "", "the path of the config file")
@@ -53,12 +52,15 @@ func main() {
 	// waiting for close signal
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+
+	// block
+	logger.Info("waiting for close signal")
 	sig := <-signalChan
-	logger.Warn("Received signal", zap.String("signal", sig.String()))
+	logger.Warn("received signal; starting graceful shutdown", zap.String("signal", sig.String()))
 	cancel()
-	logger.Info("waiting for server to stop")
+	logger.Info("waiting for servers to cleanup and stop")
 	time.Sleep(5 * time.Second)
-	logger.Warn("Main exiting")
+	logger.Warn("waiting time drains out, exiting")
 }
 
 func createLogger(cfg *common.Config) (*zap.Logger, error) {

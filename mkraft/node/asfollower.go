@@ -26,6 +26,7 @@ the control flow of the FOLLOWER is :
 - (CLEANER: worker thread) the cleaner to reject client commands, so this dirty messages don't interfere with the main flow;
 */
 func (n *nodeImpl) RunAsFollower(ctx context.Context) {
+	n.logger.Info("node starts as follower...")
 	if n.getNodeState() != StateFollower {
 		panic("node is not in FOLLOWER state")
 	}
@@ -37,7 +38,10 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerWaitGroup := sync.WaitGroup{}
 	workerWaitGroup.Add(2)
-	electionTicker := time.NewTicker(n.cfg.GetElectionTimeout())
+
+	electionTimeout := n.cfg.GetElectionTimeout()
+	n.logger.Info("election timeout", zap.Duration("electionTimeout", electionTimeout))
+	electionTicker := time.NewTicker(electionTimeout)
 	n.noleaderApplySignalCh = make(chan bool, n.cfg.GetRaftNodeRequestBufferSize())
 
 	go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
@@ -64,6 +68,7 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					return
 
 				case <-electionTicker.C:
+					n.logger.Info("election timeout, converting to candidate")
 					err := n.ToCandidate(false)
 					if err != nil {
 						n.logger.Error("key error: in fromFollowerToCandidate", zap.Error(err))
@@ -73,7 +78,10 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					return
 
 				case requestVoteInternal := <-n.requestVoteCh:
-					electionTicker.Reset(n.cfg.GetElectionTimeout())
+					electionTimeout = n.cfg.GetElectionTimeout()
+					n.logger.Info("election timeout", zap.Duration("electionTimeout", electionTimeout))
+					electionTicker.Reset(electionTimeout)
+
 					resp := n.handleVoteRequestAsNoLeader(requestVoteInternal.Req)
 					wrappedResp := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 						Resp: resp,
@@ -82,7 +90,10 @@ func (n *nodeImpl) RunAsFollower(ctx context.Context) {
 					requestVoteInternal.RespChan <- &wrappedResp
 
 				case appendEntryInternal := <-n.appendEntryCh:
-					electionTicker.Reset(n.cfg.GetElectionTimeout())
+					electionTimeout = n.cfg.GetElectionTimeout()
+					n.logger.Info("election timeout", zap.Duration("electionTimeout", electionTimeout))
+					electionTicker.Reset(electionTimeout)
+
 					resp := n.receiveAppendEntriesAsNoLeader(ctx, appendEntryInternal.Req)
 					wrappedResp := utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 						Resp: resp,
@@ -173,8 +184,9 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 	}()
 
 	// 2. update the term
+	// is the node is not a leader, we don't need the term to be larger, we only need it to be no-less
 	returnedTerm := currentTerm
-	if reqTerm > currentTerm {
+	if (reqTerm > currentTerm) || (reqTerm == currentTerm && n.state == StateCandidate) {
 		err := n.ToFollower(req.LeaderId, reqTerm, false)
 		if err != nil {
 			n.logger.Error("key error: in ToFollower", zap.Error(err))
