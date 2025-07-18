@@ -1,8 +1,10 @@
 package peers
 
 import (
+	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/maki3cat/mkraft/common"
 	"go.uber.org/zap"
@@ -23,7 +25,6 @@ func NewMembershipWithStaticConfig(logger *zap.Logger, cfg *common.Config) (Memb
 			return nil, errors.New("node id and uri should not be empty")
 		}
 	}
-
 	// init
 	logger.Info("Initializing static membership manager")
 	staticMembership := &staticMembership{
@@ -50,6 +51,9 @@ type Membership interface {
 	GetAllPeerClients() ([]PeerClient, error)
 	GetAllPeerClientsV2() (map[string]PeerClient, error)
 	GetAllPeerNodeIDs() ([]string, error)
+
+	// start the membership manager
+	Start(ctx context.Context)
 	GracefulStop()
 }
 
@@ -60,6 +64,14 @@ type staticMembership struct {
 	// conns         *sync.Map
 	logger *zap.Logger
 	cfg    *common.Config
+}
+
+func (mgr *staticMembership) Start(ctx context.Context) {
+	_, err := mgr.GetAllPeerClientsV2()
+	if err != nil {
+		mgr.logger.Error("failed to get initialize all peer clients at start time, will retry later", zap.Error(err))
+	}
+	go mgr.connCheckWorker(ctx)
 }
 
 func (mgr *staticMembership) GracefulStop() {
@@ -149,4 +161,48 @@ func (mgr *staticMembership) GetAllPeerClientsV2() (map[string]PeerClient, error
 		return peers, errors.New("no peers found without errors")
 	}
 	return peers, nil
+}
+
+func (mgr *staticMembership) refreshPeerClient(nodeID string) error {
+	mgr.peerInitLocks[nodeID].Lock()
+	defer mgr.peerInitLocks[nodeID].Unlock()
+	// directlyrebuild the connection
+	addr := mgr.peerAddrs[nodeID]
+	newClient, err := NewPeerClientImpl(nodeID, addr, mgr.logger, mgr.cfg)
+	if err != nil {
+		mgr.logger.Error("failed to refresh new client", zap.String("nodeID", nodeID), zap.Error(err))
+		return err
+	}
+	mgr.clients.Store(nodeID, newClient)
+	return nil
+}
+
+func (mgr *staticMembership) connCheckWorker(ctx context.Context) {
+	ticker := time.NewTicker(time.Millisecond * 100)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			mgr.logger.Info("conn check: exits because of context done")
+			return
+		case <-ticker.C:
+			clients, err := mgr.GetAllPeerClientsV2()
+			if err != nil {
+				mgr.logger.Error("conn check: failed to get all peer clients", zap.Error(err))
+				continue
+			}
+			for nodeID, client := range clients {
+				if !client.PeerConnCheck(ctx) {
+					mgr.logger.Error("conn check: peer is unavailable, should be refreshed", zap.String("nodeID", nodeID), zap.Error(err))
+					err = mgr.refreshPeerClient(nodeID)
+					if err != nil {
+						mgr.logger.Error("conn check: failed to refresh peer client, will retry later", zap.String("nodeID", nodeID), zap.Error(err))
+						continue
+					}
+				} else {
+					mgr.logger.Debug("conn check: peer is healthy", zap.String("nodeID", nodeID))
+				}
+			}
+		}
+	}
 }

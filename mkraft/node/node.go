@@ -161,6 +161,8 @@ type nodeImpl struct {
 }
 
 func (n *nodeImpl) Start(ctx context.Context) {
+	n.membership.Start(ctx)
+
 	go n.tracer.start(ctx)
 	currentTerm, state, votedFor := n.getKeyState()
 	n.tracer.add(currentTerm, n.NodeId, state, votedFor)

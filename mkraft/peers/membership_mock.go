@@ -10,6 +10,7 @@
 package peers
 
 import (
+	context "context"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -108,4 +109,28 @@ func (m *MockMembership) GracefulStop() {
 func (mr *MockMembershipMockRecorder) GracefulStop() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GracefulStop", reflect.TypeOf((*MockMembership)(nil).GracefulStop))
+}
+
+// Start mocks base method.
+func (m *MockMembership) Start(ctx context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Start", ctx)
+}
+
+// Start indicates an expected call of Start.
+func (mr *MockMembershipMockRecorder) Start(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockMembership)(nil).Start), ctx)
+}
+
+// TriggerRefresh mocks base method.
+func (m *MockMembership) TriggerRefresh(nodeID string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "TriggerRefresh", nodeID)
+}
+
+// TriggerRefresh indicates an expected call of TriggerRefresh.
+func (mr *MockMembershipMockRecorder) TriggerRefresh(nodeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TriggerRefresh", reflect.TypeOf((*MockMembership)(nil).TriggerRefresh), nodeID)
 }
