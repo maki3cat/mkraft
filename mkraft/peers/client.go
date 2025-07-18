@@ -74,13 +74,14 @@ func (rc *peerClient) GetNodeID() string {
 
 func (rc *peerClient) Close() error {
 	if rc.conn != nil {
+		// todo: not sure close a stale connection returns an error or not
 		err := rc.conn.Close()
 		if err != nil {
 			rc.logger.Error("failed to close gRPC connection", zap.String("nodeID", rc.nodeId), zap.Error(err))
 		}
 		return err
 	}
-	rc.logger.Warn("gRPC connection is nil, cannot close")
+	rc.logger.Warn("gRPC connection is nil, close is a no-op")
 	return nil
 }
 

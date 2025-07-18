@@ -23,6 +23,7 @@ the control flow of the FOLLOWER is :
 - (APPLY: worker thread) the worker to apply logs to the state machine, so the application doesn't block the receiver;
 - (CLEANER: worker thread) the cleaner to reject client commands, so this dirty messages don't interfere with the main flow;
 */
+// TODO: the follower and candidate should be merged into one state, and the election should be done in the main thread
 func (n *nodeImpl) RunAsCandidate(ctx context.Context) {
 
 	if n.getNodeState() != StateCandidate {

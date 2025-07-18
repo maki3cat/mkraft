@@ -1,6 +1,7 @@
 package peers
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -23,7 +24,6 @@ func NewMembershipWithStaticConfig(logger *zap.Logger, cfg *common.Config) (Memb
 			return nil, errors.New("node id and uri should not be empty")
 		}
 	}
-
 	// init
 	logger.Info("Initializing static membership manager")
 	staticMembership := &staticMembership{
@@ -33,6 +33,7 @@ func NewMembershipWithStaticConfig(logger *zap.Logger, cfg *common.Config) (Memb
 		peerInitLocks: make(map[string]*sync.Mutex),
 		logger:        logger,
 		cfg:           cfg,
+		refreshCh:     make(chan string, len(membership.AllMembers)),
 	}
 	for _, node := range membership.AllMembers {
 		staticMembership.peerAddrs[node.NodeID] = node.NodeURI
@@ -50,7 +51,13 @@ type Membership interface {
 	GetAllPeerClients() ([]PeerClient, error)
 	GetAllPeerClientsV2() (map[string]PeerClient, error)
 	GetAllPeerNodeIDs() ([]string, error)
+
+	// start the membership manager
+	Start(ctx context.Context)
 	GracefulStop()
+
+	// send a refresh signal to the membership manager
+	TriggerRefresh(nodeID string)
 }
 
 type staticMembership struct {
@@ -60,6 +67,16 @@ type staticMembership struct {
 	// conns         *sync.Map
 	logger *zap.Logger
 	cfg    *common.Config
+
+	// refresh channel
+	refreshCh chan string
+}
+
+func (mgr *staticMembership) Start(ctx context.Context) {
+	if len(mgr.refreshCh) < len(mgr.peerAddrs) {
+		panic("the refresh chan should be at least the size of the peer addrs")
+	}
+	go mgr.refreshWorker(ctx)
 }
 
 func (mgr *staticMembership) GracefulStop() {
@@ -149,4 +166,52 @@ func (mgr *staticMembership) GetAllPeerClientsV2() (map[string]PeerClient, error
 		return peers, errors.New("no peers found without errors")
 	}
 	return peers, nil
+}
+
+func (mgr *staticMembership) refreshPeerClient(nodeID string) error {
+	mgr.peerInitLocks[nodeID].Lock()
+	defer mgr.peerInitLocks[nodeID].Unlock()
+
+	// the connection may be stale
+	client, ok := mgr.clients.Load(nodeID)
+	if ok {
+		err := client.(PeerClient).Close()
+		if err != nil {
+			mgr.logger.Error("failed to close stale client", zap.String("nodeID", nodeID), zap.Error(err))
+		}
+		mgr.clients.Delete(nodeID)
+	}
+
+	// rebuild the connection
+	addr := mgr.peerAddrs[nodeID]
+	newClient, err := NewPeerClientImpl(nodeID, addr, mgr.logger, mgr.cfg)
+	if err != nil {
+		mgr.logger.Error("failed to refresh new client", zap.String("nodeID", nodeID), zap.Error(err))
+		return err
+	}
+	mgr.clients.Store(nodeID, newClient)
+	return nil
+}
+
+func (mgr *staticMembership) TriggerRefresh(nodeID string) {
+	select {
+	case mgr.refreshCh <- nodeID:
+	default:
+		// we allow this kind of drop
+		mgr.logger.Warn("the refresh channel is full, the refresh signal is dropped", zap.String("nodeID", nodeID))
+	}
+}
+
+func (mgr *staticMembership) refreshWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case nodeID := <-mgr.refreshCh:
+			err := mgr.refreshPeerClient(nodeID)
+			if err != nil {
+				mgr.logger.Error("failed to refresh peer client", zap.String("nodeID", nodeID), zap.Error(err))
+			}
+		}
+	}
 }
