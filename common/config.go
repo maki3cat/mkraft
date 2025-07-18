@@ -27,7 +27,7 @@ func LoadConfig(filePath string) (*Config, error) {
 		return nil, err
 	}
 
-	// validate
+	// validate - the grammar
 	err = validator.Validate(cfg)
 	if err != nil {
 		return nil, err
@@ -36,9 +36,25 @@ func LoadConfig(filePath string) (*Config, error) {
 		fmt.Println("err", err)
 		return nil, err
 	}
+	configInvariantCheck(cfg)
+
+	// key invariants
 
 	fmt.Println("cfg", fmt.Sprintf("%+v", cfg))
 	return cfg, nil
+}
+
+func configInvariantCheck(cfg *Config) {
+	if cfg.BasicConfig.ElectionTimeoutMinInMs >= cfg.BasicConfig.ElectionTimeoutMaxInMs {
+		panic("election timeout min must be less than max")
+	}
+	if cfg.BasicConfig.ElectionTimeoutMinInMs < 2*cfg.BasicConfig.RPCRequestTimeoutInMs {
+		panic("election timeout min must be at least 2 rpc timeouts")
+	}
+	distance := cfg.BasicConfig.ElectionTimeoutMaxInMs - cfg.BasicConfig.ElectionTimeoutMinInMs
+	if distance < 5*cfg.BasicConfig.RPCRequestTimeoutInMs {
+		panic("election timeout range must be at least 5 rpc timeouts")
+	}
 }
 
 func GetDefaultConfig() *Config {
@@ -75,8 +91,9 @@ const (
 	RPC_REUQEST_TIMEOUT_IN_MS = 100
 	// reference: the Jeff-Dean's number everyone shall know
 	RPC_DEADLINE_MARGIN_IN_MICRO_SEC = 500
-	ELECTION_TIMEOUT_MIN_IN_MS       = 150
-	ELECTION_TIMEOUT_MAX_IN_MS       = 500
+
+	ELECTION_TIMEOUT_MIN_IN_MS = 3 * RPC_REUQEST_TIMEOUT_IN_MS
+	ELECTION_TIMEOUT_MAX_IN_MS = 9 * RPC_REUQEST_TIMEOUT_IN_MS
 
 	MIN_REMAINING_TIME_FOR_RPC_IN_MS = 150
 
@@ -177,10 +194,7 @@ func (c *Config) GetRPCRequestTimeout() time.Duration {
 
 func (c *Config) GetElectionTimeout() time.Duration {
 	b := c.BasicConfig
-	timeoutRange := b.ElectionTimeoutMaxInMs - b.ElectionTimeoutMinInMs
-	seed := time.Now().UnixNano() + int64(rand.Intn(1000000))
-	r := rand.New(rand.NewSource(seed))
-	randomMs := r.Intn(timeoutRange) + b.ElectionTimeoutMinInMs
+	randomMs := (rand.Intn(b.ElectionTimeoutMaxInMs-b.ElectionTimeoutMinInMs) + b.ElectionTimeoutMinInMs)
 	return time.Duration(randomMs) * time.Millisecond
 }
 

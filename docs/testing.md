@@ -1,24 +1,23 @@
 
+https://www.notion.so/Bugs-Journal-2334ef7514ee808ab8cfc4801d362a23?source=copy_link
+
 ## Correctness
 
 1. ELECTION SAFETY AND EFFICIENCY
 
 efficiency here can be viewed as kind of correctness that a leader should be elected ASAP
 
-| #   | Invariant / Property                                                                 | Verification                      |
-| --- | ------------------------------------------------------------------------------------ | --------------------------------- |
-| 1   | Only one leader exists for one term (paper)                                          | by logs                           |
-| 2   | When leader is elected, others become followers                                      | Partly by logs; partly by manual; |
-| 3   | When election happens, it usually gets the new leader with next term                 | by logs                           |
-| 4   | When leader is elected, it usually doesn't change if nothing unstable happens        | Partly by logs                    |
-| 5   | The elected leader should be the one with all the committed logs (paper)             | Haven't been auto-checked         |
-| 6   | We don't want more than 1 node to become Candidate; this will slow down the election | todo by logs                      |
+| #   | Invariant / Property                                                                                                            | Verification                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| 1   | Only one leader exists for one term (paper)                                                                                     | by logs                           |
+| 2   | When leader is elected, others become followers                                                                                 | Partly by logs; partly by manual; |
+| 3   | When election happens, it usually gets the new leader with next term                                                            | by logs                           |
+| 4   | When leader is elected, it usually doesn't change if nothing unstable happens                                                   | Partly by logs                    |
+| 5   | The elected leader should be the one with all the committed logs (paper)                                                        | Haven't been auto-checked         |
+| 6   | We don't want more majority nodes to become Candidate; this will slow down the election; this can be tuned by election timeout; | by logs                           |
 
 
 **Key Progress**
-
-
-
 - currently working on
 1. when only one node, it keeps re-election; and it becomes a leader as soon as another node joins;
 
