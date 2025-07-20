@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/utils"
@@ -90,7 +91,7 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 	// 2. update the term
 	// is the node is not a leader, we don't need the term to be larger, we only need it to be no-less
 	returnedTerm := currentTerm
-	if (reqTerm > currentTerm) || (reqTerm == currentTerm && n.state == StateCandidate) {
+	if reqTerm >= currentTerm {
 		err := n.ToFollower(req.LeaderId, reqTerm, false)
 		if err != nil {
 			n.logger.Error("key error: in ToFollower", zap.Error(err))
@@ -168,80 +169,45 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 	}
 }
 
-
 // Specifical Rule for Candidate Election:
 // (1) increment currentTerm
 // (2) vote for self
 // (3) send RequestVote RPCs to all other servers
 // if votes received from majority of servers: become leader
-// if AppendEntries RPC received from new leader: convert to follower
-// if election timeout elapses: start new election
-// error handling:
-// This function closes the channel when there is and error, and should be returned
-// LOCKED
-func (n *nodeImpl) asyncSendElection(ctx context.Context, updateCandidateTerm bool) chan *MajorityRequestVoteResp {
+func (n *nodeImpl) asyncSendElection(ctx context.Context, timeout time.Duration) chan *MajorityRequestVoteResp {
 
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	consensusChan := make(chan *MajorityRequestVoteResp, 1)
-
-	// check if the node is degraded to follower
-	n.stateRWLock.RLock()
-	defer n.stateRWLock.RUnlock()
-
-	if n.state == StateFollower {
+	err := n.StateChangeForElection(true)
+	if err != nil {
+		n.logger.Error("state change for election failed", zap.String("requestID", requestID), zap.Error(err))
 		consensusChan <- &MajorityRequestVoteResp{
-			Err: common.ErrNotCandidate, // todo: test case for this one; and the caller should consume this err
-		}
-		return consensusChan
-	} else {
-		if updateCandidateTerm {
-			n.logger.Debug("asyncSendElection: updating candidate term", zap.String("requestID", requestID))
-			err := n.ToCandidate(true)
-			if err != nil {
-				n.logger.Error("asyncSendElection: error in ToCandidate", zap.String("requestID", requestID), zap.Error(err))
-				consensusChan <- &MajorityRequestVoteResp{
-					Err: err,
-				}
-				return consensusChan
-			}
-		} else {
-			n.logger.Debug("asyncSendElection: not updating candidate term", zap.String("requestID", requestID))
-		}
-	}
-
-	// todo: testing should be called cancelled 1) the node degrade to folower; 2) the node starts a new election;
-	timeout := n.cfg.GetElectionTimeout()
-	n.logger.Debug("async election timeout", zap.Duration("timeout", timeout))
-	electionCtx, _ := context.WithTimeout(ctx, timeout)
-	// defer electionCancel() // this is not needed, because the ConsensusRequestVote is a shortcut method
-	// and the ctx is called cancelled when the candidate shall degrade to follower
-
-	// the term may be updated previously
-	if n.state != StateCandidate {
-		n.logger.Warn("asyncSendElection: node is not in candidate state, returning")
-		consensusChan <- &MajorityRequestVoteResp{
-			Err: common.ErrNotCandidate,
+			Err: err,
 		}
 		return consensusChan
 	}
-	go func(term uint32) {
+
+	term, _, _ := n.getKeyState()
+	go func(ctx context.Context, term uint32) {
 		req := &rpc.RequestVoteRequest{
 			Term:        term,
 			CandidateId: n.NodeId,
+			// todo: get the last log index and term from the raft log
 			// LastLogIndex: n.raftLog.GetLastLogIndex(),
 			// LastLogTerm:  n.raftLog.GetLastLogTerm(),
 		}
-		n.logger.Debug("asyncSendElection: sending a request vote to the consensus", zap.String("requestID", requestID), zap.Any("req", req))
-		resp, err := n.consensus.ConsensusRequestVote(electionCtx, req)
+		resp, err := n.consensus.ConsensusRequestVote(ctx, req)
 		if err != nil {
 			n.logger.Error("asyncSendElection: error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
 			consensusChan <- &MajorityRequestVoteResp{
 				Err: err,
 			}
 		} else {
-			n.logger.Debug("asyncSendElection: received a response from the consensus", zap.String("requestID", requestID), zap.Any("resp", resp))
 			consensusChan <- resp
 		}
-	}(n.CurrentTerm)
+	}(ctxWithTimeout, term)
 	return consensusChan
 }

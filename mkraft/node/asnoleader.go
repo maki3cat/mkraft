@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
 	"go.uber.org/zap"
@@ -15,7 +14,7 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 
 	state := n.getNodeState()
 	n.logger.Info("node is running as ", zap.String("state", state.String()))
-	if state != StateCandidate && state != StateFollower {
+	if state != StateFollower {
 		panic("node is not running as noleader")
 	}
 
@@ -56,9 +55,10 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 					return
 
 				case <-electionTimer.C:
-					n.logger.Debug("ELECTION: election timer fires, starts a new election")
-					electionChan = n.asyncSendElection(ctx, true)
-					electionTimer.Reset(n.cfg.GetElectionTimeout())
+					n.logger.Debug("ELECTION: timeouts")
+					nextTimeout := n.cfg.GetElectionTimeout()
+					electionChan = n.asyncSendElection(ctx, nextTimeout)
+					electionTimer.Reset(nextTimeout)
 
 				case response, ok := <-electionChan:
 					// the vote granted can change the candidate
@@ -66,10 +66,6 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 					if !ok {
 						panic("consensusChan is not designed to be closed")
 					}
-					if response.Err == common.ErrNotCandidate {
-						continue
-					}
-
 					electionTimer.Reset(n.cfg.GetElectionTimeout())
 					if response.Err != nil {
 						n.logger.Error(
@@ -77,12 +73,20 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 							zap.Error(response.Err))
 						continue
 					}
+					term, _, _ := n.getKeyState()
 					if response.VoteGranted {
-						n.ToLeader()
-						n.cleanupApplyLogsBeforeToLeader()
-						n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
-						go n.RunAsLeader(ctx)
-						return
+						// what if the term is higher
+						if response.Term == term {
+							n.ToLeader()
+							n.cleanupApplyLogsBeforeToLeader()
+							n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
+							go n.RunAsLeader(ctx)
+							return
+						} else if response.Term > term {
+							panic("cannot get the vote and a higher term")
+						} else {
+							n.logger.Warn("the term is lower, the voteRequestResult is stale")
+						}
 					} else {
 						if response.Term > currentTerm {
 							// keypoint: here the vote for shall be the one that sends the higher term,
@@ -93,13 +97,7 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 								n.logger.Error("key error: in ToFollower", zap.Error(err))
 								panic(err)
 							}
-							go n.RunAsNoLeader(ctx)
-							return
-						} else {
-							n.logger.Warn(
-								"not enough votes, re-elect again",
-								zap.Int("term", int(currentTerm)), zap.String("nId", n.NodeId))
-							electionChan = n.asyncSendElection(ctx, true)
+							n.logger.Info("election failed, still running as a follower")
 						}
 					}
 

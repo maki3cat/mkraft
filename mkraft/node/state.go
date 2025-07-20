@@ -29,7 +29,7 @@ func (n *nodeImpl) ToLeader() error {
 	return nil
 }
 
-func (n *nodeImpl) ToCandidate(reEntrant bool) error {
+func (n *nodeImpl) StateChangeForElection(reEntrant bool) error {
 	n.logger.Debug("STATE CHANGE: to candidate", zap.Bool("reEntrant", reEntrant))
 	if !reEntrant {
 		n.stateRWLock.Lock()
@@ -45,7 +45,7 @@ func (n *nodeImpl) ToCandidate(reEntrant bool) error {
 		panic(err)
 	}
 
-	n.state = StateCandidate
+	n.state = StateFollower
 	n.CurrentTerm = term
 	n.VotedFor = voteFor
 	n.tracer.add(n.CurrentTerm, n.NodeId, n.state, n.VotedFor)
