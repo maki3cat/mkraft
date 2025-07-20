@@ -57,12 +57,11 @@ func (mr *MockConsensusMockRecorder) ConsensusAppendEntries(ctx, peerReq, curren
 }
 
 // ConsensusRequestVote mocks base method.
-func (m *MockConsensus) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
+func (m *MockConsensus) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) *MajorityRequestVoteResp {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ConsensusRequestVote", ctx, request)
 	ret0, _ := ret[0].(*MajorityRequestVoteResp)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	return ret0
 }
 
 // ConsensusRequestVote indicates an expected call of ConsensusRequestVote.

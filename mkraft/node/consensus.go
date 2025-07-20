@@ -12,14 +12,13 @@ import (
 	"go.uber.org/zap"
 )
 
-
 type Consensus interface {
 
 	// synchronous call to until the a consensus is reached or is failed
 	// it contains forever retry mechanism, so
 	// !!! the ctx shall be Done within the election timeout
 	// !!! This is shortcut method, it returns when the consensus is reached or failed without waiting for all the responses
-	ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error)
+	ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) *MajorityRequestVoteResp
 
 	// goroutine management:this method expands goroutines to the number of peers,
 	// but since this system handles appendEnrines once a time in a serial way
@@ -44,116 +43,6 @@ func NewConsensus(logger *zap.Logger, membership peers.Membership) Consensus {
 
 func (c *consensus) SetNodeToUpdateOn(node Node) {
 	c.node = node
-}
-
-func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*MajorityRequestVoteResp, error) {
-
-	requestID := common.GetRequestID(ctx)
-	total := c.membership.GetTotalMemberCount()
-	peerClients, err := c.membership.GetAllPeerClients()
-	if err != nil {
-		c.logger.Error("error in getting all peer clients",
-			zap.Error(err),
-			zap.String("requestID", requestID))
-		return nil, err
-	}
-	if !calculateIfMajorityMet(total, len(peerClients)) {
-		c.logger.Error("Not enough peers for majority",
-			zap.Int("total", total),
-			zap.Int("peerCount", len(peerClients)),
-			zap.String("requestID", requestID))
-		return nil, errors.New("no member clients found")
-	}
-
-	peersCount := len(peerClients)
-	fanInChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
-
-	// check deadline and create rpc timeout
-	deadline, deadlineSet := ctx.Deadline()
-	if !deadlineSet {
-		return nil, common.ErrDeadlineNotSet
-	}
-	rpcTimtout := time.Until(deadline)
-	c.logger.Debug("consensus request vote rpc timeout", zap.Duration("timeout", rpcTimtout))
-	if rpcTimtout <= 0 {
-		return nil, common.ErrDeadlineInThePast
-	}
-
-	for _, member := range peerClients {
-		// FAN-OUT
-		go func() {
-			memberHandle := member
-			rpcCtx, rpcCancel := context.WithTimeout(ctx, rpcTimtout)
-			defer rpcCancel()
-			// FAN-IN
-			resp, err := memberHandle.RequestVoteWithRetry(rpcCtx, req)
-			res := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-				Resp:       resp,
-				Err:        err,
-				PeerNodeID: memberHandle.GetNodeID(),
-			}
-			fanInChan <- res
-		}()
-	}
-
-	// FAN-IN WITH STOPPING SHORT
-	peerVoteAccumulated := 0 // the node itself is counted as a vote
-	voteFailed := 0
-	for range peersCount {
-		select {
-		case res := <-fanInChan:
-			if err := res.Err; err != nil {
-				voteFailed++
-				c.logger.Error("error in sending request vote to one node",
-					zap.Error(err),
-					zap.Int("voteFailed", voteFailed),
-					zap.String("requestID", requestID))
-				if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed) {
-					return nil, common.ErrMajorityNotMet
-				} else {
-					continue
-				}
-			} else {
-				resp := res.Resp
-				// if someone responds with a term greater than the current term
-				if resp.Term > req.Term {
-					return &MajorityRequestVoteResp{
-						Term:                     resp.Term,
-						VoteGranted:              false,
-						PeerNodeIDWithHigherTerm: res.PeerNodeID,
-					}, nil
-				}
-				if resp.Term == req.Term {
-					if resp.VoteGranted {
-						// won the election
-						peerVoteAccumulated++
-						if calculateIfMajorityMet(total, peerVoteAccumulated) {
-							return &MajorityRequestVoteResp{
-								Term:        req.Term,
-								VoteGranted: true,
-							}, nil
-						}
-					} else {
-						voteFailed++
-						if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed) {
-							return nil, common.ErrMajorityNotMet
-						}
-					}
-				}
-				if resp.Term < req.Term {
-					// this means the current node doesn't have the latest commit index
-					// todo: there are cares we can cancel the minority response directly,
-					// possibly just looking bad at the logs
-					c.logger.Warn("current node doesn't have the latest commit index, so it fails to get the vote from a peer",
-						zap.String("requestID", requestID))
-					return nil, common.ErrMajorityNotMet
-				}
-			}
-		case <-ctx.Done():
-			return nil, common.ErrContextDone
-		}
-	}
-	return nil, common.ErrInvariantsBroken
 }
 
 // if the majority pper-rpc fail, the err is nil and the resp.Success is false because can be multiple errors; the caller shall recall;

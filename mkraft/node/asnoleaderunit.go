@@ -189,8 +189,8 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, timeout time.Duration)
 
 	term, _, _ := n.getKeyState()
 	go func(term uint32) {
-		ctxWithTimeout, _ := context.WithTimeout(ctx, timeout)
-		// defer cancel()
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 		req := &rpc.RequestVoteRequest{
 			Term:        term,
 			CandidateId: n.NodeId,
@@ -198,7 +198,8 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, timeout time.Duration)
 			// LastLogIndex: n.raftLog.GetLastLogIndex(),
 			// LastLogTerm:  n.raftLog.GetLastLogTerm(),
 		}
-		resp, err := n.consensus.ConsensusRequestVote(ctxWithTimeout, req)
+		resp := n.consensus.ConsensusRequestVote(ctxWithTimeout, req)
+		err := resp.Err
 		if err != nil {
 			n.logger.Error("asyncSendElection: error in RequestVoteSendForConsensus", zap.String("requestID", requestID), zap.Error(err))
 			consensusChan <- &MajorityRequestVoteResp{
