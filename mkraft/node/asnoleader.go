@@ -60,12 +60,9 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 					electionChan = n.asyncSendElection(ctx, nextTimeout)
 					electionTimer.Reset(nextTimeout)
 
-				case response, ok := <-electionChan:
+				case response := <-electionChan:
 					// the vote granted can change the candidate
 					//  to leader or follower or stay the same
-					if !ok {
-						panic("consensusChan is not designed to be closed")
-					}
 					if response.Err != nil {
 						n.logger.Error(
 							"candidate has error in election, try to re-elect after another election timeout",
@@ -75,7 +72,7 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 
 					// to trigger reset the election timer, it at least,should not be a error like timeout
 					electionTimer.Reset(n.cfg.GetElectionTimeout())
-					if n.receiveRequestVoteResponse(response) {
+					if n.handleElectionResp(response) {
 						n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
 						go n.RunAsLeader(ctx)
 						return
@@ -87,7 +84,8 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 						continue
 					}
 					electionTimer.Reset(n.cfg.GetElectionTimeout())
-					resp := n.handleVoteRequestAsNoLeader(req.Req) // state changed inside
+
+					resp := n.receiveVoteRequestAsNoLeader(req.Req) // state changed inside
 					req.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 						Resp: resp,
 						Err:  nil,
@@ -99,6 +97,7 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 						continue
 					}
 					electionTimer.Reset(n.cfg.GetElectionTimeout())
+
 					resp := n.receiveAppendEntriesAsNoLeader(ctx, req.Req)
 					req.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 						Resp: resp,

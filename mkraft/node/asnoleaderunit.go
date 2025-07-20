@@ -12,7 +12,7 @@ import (
 )
 
 // SHARED BY FOLLOWER AND CANDIDATE
-func (n *nodeImpl) handleVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc.RequestVoteResponse {
+func (n *nodeImpl) receiveVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc.RequestVoteResponse {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 
@@ -57,23 +57,27 @@ func (n *nodeImpl) handleVoteRequestAsNoLeader(req *rpc.RequestVoteRequest) *rpc
 }
 
 // SHARED BY FOLLOWER AND CANDIDATE
+// whole function is lock-protected and should be short, the only IO is local file updates of meta state, no network
+
 // maki: lastLogIndex, commitIndex, lastApplied can be totally different from each other
 // shall be called when the node is not a leader
 // the raft server is generally single-threaded, so there is no other thread to change the commitIdx
 func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.AppendEntriesRequest) *rpc.AppendEntriesResponse {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+
 	requestID := common.GetRequestID(ctx)
 	n.logger.Debug("receiveAppendEntriesAsNoLeader: received an append entries request", zap.Any("req", req), zap.String("requestID", requestID))
 
 	var response rpc.AppendEntriesResponse
 	reqTerm := uint32(req.Term)
-	currentTerm, state, voteFor := n.getKeyState()
 
 	// return FALSE CASES:
 	// (1) fast track for the stale term
 	// (2) check the prevLogIndex and prevLogTerm
-	if reqTerm < currentTerm || !n.raftLog.CheckPreLog(req.PrevLogIndex, req.PrevLogTerm) {
+	if reqTerm < n.CurrentTerm || !n.raftLog.CheckPreLog(req.PrevLogIndex, req.PrevLogTerm) {
 		response = rpc.AppendEntriesResponse{
-			Term:    currentTerm,
+			Term:    n.CurrentTerm,
 			Success: false,
 		}
 		return &response
@@ -90,15 +94,13 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 
 	// 2. update the term
 	// if current term is same, and
-	returnedTerm := currentTerm
-	if reqTerm > currentTerm ||
-		(reqTerm == currentTerm && (state == StateCandidate || voteFor != req.LeaderId)) {
+	if reqTerm > n.CurrentTerm ||
+		(reqTerm == n.CurrentTerm && (n.state == StateCandidate || n.VotedFor != req.LeaderId)) {
 		err := n.ToFollower(req.LeaderId, reqTerm, false)
 		if err != nil {
 			n.logger.Error("key error: in ToFollower", zap.Error(err))
 			panic(err)
 		}
-		returnedTerm = reqTerm
 	}
 
 	// 3. append logs
@@ -106,19 +108,20 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 		err := n.updateLogsAsNoLeader(ctx, req)
 		if err != nil {
 			if err == common.ErrPreLogNotMatch {
+				n.logger.Error("pre log does not match")
 				response = rpc.AppendEntriesResponse{
-					Term:    returnedTerm,
+					Term:    n.CurrentTerm,
 					Success: false,
 				}
 				return &response
 			}
-			n.logger.Error("error in UpdateLogsInBatch", zap.Error(err))
+			n.logger.Error("haven't designed the error handling for UpdateLogsInBatch", zap.Error(err))
 			panic(err)
 		}
 	}
 
 	resp := &rpc.AppendEntriesResponse{
-		Term:    returnedTerm,
+		Term:    n.CurrentTerm,
 		Success: true,
 	}
 	n.logger.Debug("receiveAppendEntriesAsNoLeader: returned an append entries response", zap.Any("resp", resp), zap.String("requestID", requestID))
@@ -170,6 +173,11 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 	}
 }
 
+// this is an async function so it doesn't wait for the network IO to complete
+// it is safe to lock the whole function
+// but definitely, when the response comes back
+// the state may be changed and we will compare that in @handleElectionResp
+
 // Specifical Rule for Candidate Election:
 // (1) increment currentTerm
 // (2) vote for self
@@ -177,9 +185,12 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 // if votes received from majority of servers: become leader
 func (n *nodeImpl) asyncSendElection(ctx context.Context, timeout time.Duration) chan *MajorityRequestVoteResp {
 	n.logger.Debug("asyncSendElection: sending election request", zap.Duration("timeout", timeout))
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+
 	ctx, requestID := common.GetOrGenerateRequestID(ctx)
 	consensusChan := make(chan *MajorityRequestVoteResp, 1)
-	err := n.ToCandidate()
+	err := n.ChangeStateForElection(true)
 	if err != nil {
 		n.logger.Error("state change for election failed", zap.String("requestID", requestID), zap.Error(err))
 		consensusChan <- &MajorityRequestVoteResp{
@@ -188,7 +199,6 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, timeout time.Duration)
 		return consensusChan
 	}
 
-	term, _, _ := n.getKeyState()
 	go func(term uint32) {
 		ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -209,12 +219,12 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, timeout time.Duration)
 		} else {
 			consensusChan <- resp
 		}
-	}(term)
+	}(n.CurrentTerm)
 	return consensusChan
 }
 
 // return true if the node should be upgraded to leader
-func (n *nodeImpl) receiveRequestVoteResponse(resp *MajorityRequestVoteResp) bool {
+func (n *nodeImpl) handleElectionResp(resp *MajorityRequestVoteResp) bool {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 	n.logger.Info("receiveRequestVoteResponse: received a request vote response, with current term", zap.Any("resp", resp), zap.Int("currentTerm", int(n.CurrentTerm)))
