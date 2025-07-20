@@ -66,10 +66,10 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 	}
 
 	// FAN-OUT, FAN-IN
-	fanOutFunc := func(c peers.PeerClient, fanInChan chan<- utils.RPCRespWrapper[*rpc.RequestVoteResponse], wg *sync.WaitGroup) {
+	fanOutFunc := func(c peers.PeerClient, fanInChan chan<- *utils.RPCRespWrapper[*rpc.RequestVoteResponse], wg *sync.WaitGroup) {
 		defer wg.Done()
 		resp, err := c.RequestVote(ctx, req)
-		res := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
+		res := &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
 			Resp:       resp,
 			Err:        err,
 			PeerNodeID: c.GetNodeID(),
@@ -78,7 +78,7 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 	}
 
 	peersCount := len(peerClients)
-	fanInChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
+	fanInChan := make(chan *utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
 	fanInChanDone := make(chan struct{})
 	wg := sync.WaitGroup{}
 	for _, pc := range peerClients {
@@ -101,18 +101,16 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 	case <-fanInChanDone:
 	}
 
-	// filter out the rpc failures
+	// filter out the errors first
 	voteFailed := 0
-	correctRes := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], len(peerClients))
+	correctRes := make(chan *utils.RPCRespWrapper[*rpc.RequestVoteResponse], len(peerClients))
 	for wrappedRes := range fanInChan {
 		if err := wrappedRes.Err; err != nil {
 			voteFailed++
-			c.logger.Error("error in response of request vote to one node",
-				zap.String("requestID", requestID))
 		} else {
 			resp := wrappedRes.Resp
 			if resp.Term < req.Term {
-				panic("the peer should at least have the same term as the request")
+				panic("invariant broken: the peer should at least have the same term as the request")
 			}
 			correctRes <- wrappedRes
 		}
@@ -138,22 +136,20 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 		// equal case
 		if resp.VoteGranted {
 			peerVoteAccumulated++
-			if calculateIfMajorityMet(total, peerVoteAccumulated) {
-				return &MajorityRequestVoteResp{
-					Term:        req.Term,
-					VoteGranted: true,
-				}
-			}
 		} else {
 			voteFailed++ // probably the current node has not the latest commit index
 			c.logger.Warn("current node probablyhas not the latest commit index, so it fails to get the vote from a peer",
 				zap.String("requestID", requestID))
-			if calculateIfAlreadyFail(total, peersCount, peerVoteAccumulated, voteFailed) {
-				return &MajorityRequestVoteResp{
-					Err: common.ErrMajorityNotMet,
-				}
-			}
 		}
 	}
-	panic("a correct raft protocol should not reach here")
+	if calculateIfMajorityMet(total, peerVoteAccumulated) {
+		return &MajorityRequestVoteResp{
+			Term:        req.Term,
+			VoteGranted: true,
+		}
+	} else {
+		return &MajorityRequestVoteResp{
+			Err: common.ErrMajorityNotMet,
+		}
+	}
 }

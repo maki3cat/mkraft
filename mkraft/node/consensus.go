@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap"
 )
 
+// THIS FILE IS ABOUT THE CONSENSUS OF THE APPEND ENTRIES
+
 type Consensus interface {
 
 	// synchronous call to until the a consensus is reached or is failed
@@ -20,11 +22,13 @@ type Consensus interface {
 	// !!! This is shortcut method, it returns when the consensus is reached or failed without waiting for all the responses
 	ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) *MajorityRequestVoteResp
 
+	// to be refactored:
 	// goroutine management:this method expands goroutines to the number of peers,
 	// but since this system handles appendEnrines once a time in a serial way
 	// I don't think we need to worry about the explosion of goroutines
 	ConsensusAppendEntries(ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error)
 
+	// to be refactored:
 	SetNodeToUpdateOn(node Node)
 }
 
