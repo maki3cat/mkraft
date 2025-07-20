@@ -81,9 +81,12 @@ func (n *nodeImpl) getCommitIdx() uint64 {
 // not sure this is a good idea, but this design makes the implementation SIMPLE
 // todo: important
 // so we can prove this 1) test cases; 2) comparison with Hashicorp Raft implementation
-func (n *nodeImpl) incrementCommitIdx(numberOfCommand uint64) error {
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
+func (n *nodeImpl) incrementCommitIdx(numberOfCommand uint64, reEntrant bool) error {
+	if !reEntrant {
+		n.logger.Debug("incrementCommitIdx: lock acquired")
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
 	n.commitIndex = n.commitIndex + numberOfCommand
 	if err := n.unsafeCheckIndexIntegrity(); err != nil {
 		return err
@@ -91,9 +94,12 @@ func (n *nodeImpl) incrementCommitIdx(numberOfCommand uint64) error {
 	return n.unsafeSaveIdx()
 }
 
-func (n *nodeImpl) incrementLastApplied(numberOfCommand uint64) error {
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
+func (n *nodeImpl) incrementLastApplied(numberOfCommand uint64, reEntrant bool) error {
+	if !reEntrant {
+		n.logger.Debug("incrementLastApplied: lock acquired")
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
 	n.lastApplied = n.lastApplied + numberOfCommand
 	err := n.unsafeCheckIndexIntegrity()
 	if err != nil {
@@ -114,6 +120,7 @@ func (n *nodeImpl) unsafeCheckIndexIntegrity() error {
 // Updating matchIndex/nextIndex is a per-follower operation.
 // Reaching consensus (a majority of nodes having the same entry) is a cluster-wide operation.
 func (n *nodeImpl) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
+	n.logger.Debug("incrPeerIdxAfterLogRepli: lock acquired")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 
@@ -136,6 +143,7 @@ func (n *nodeImpl) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
 // important invariant: matchIndex[follower] ≤ nextIndex[follower] - 1
 // if the matchIndex is less than nextIndex-1, appendEntries will fail and the follower's nextIndex will be decremented
 func (n *nodeImpl) decrPeerIdxAfterLogRepli(nodeID string) {
+	n.logger.Debug("decrPeerIdxAfterLogRepli: lock acquired")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 

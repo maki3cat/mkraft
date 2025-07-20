@@ -32,6 +32,7 @@ func (n *nodeImpl) ToLeader(reEntrant bool) error {
 }
 
 func (n *nodeImpl) ChangeStateForElection(reEntrant bool) error {
+	n.logger.Debug("STATE CHANGE: to candidate enters")
 	if !reEntrant {
 		n.stateRWLock.Lock()
 		defer n.stateRWLock.Unlock()
@@ -47,6 +48,7 @@ func (n *nodeImpl) ChangeStateForElection(reEntrant bool) error {
 	n.CurrentTerm = term
 	n.VotedFor = voteFor
 	n.tracer.add(n.CurrentTerm, n.NodeId, n.state, n.VotedFor)
+	n.logger.Debug("STATE CHANGE: to candidate exits")
 	return nil
 }
 

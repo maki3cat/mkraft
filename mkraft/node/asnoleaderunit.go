@@ -88,7 +88,7 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 	defer func() {
 		// the updateCommitIdx will find the min(leaderCommit, index of last new entry in the log), so the update
 		// doesn't require result of appendLogs
-		n.incrementCommitIdx(uint64(len(req.Entries)))
+		n.incrementCommitIdx(uint64(len(req.Entries)), true)
 		n.noleaderApplySignalCh <- true
 	}()
 
@@ -96,7 +96,8 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 	// if current term is same, and
 	if reqTerm > n.CurrentTerm ||
 		(reqTerm == n.CurrentTerm && (n.state == StateCandidate || n.VotedFor != req.LeaderId)) {
-		err := n.ToFollower(req.LeaderId, reqTerm, false)
+		n.logger.Debug("receiveAppendEntriesAsNoLeader: update meta state")
+		err := n.ToFollower(req.LeaderId, reqTerm, true)
 		if err != nil {
 			n.logger.Error("key error: in ToFollower", zap.Error(err))
 			panic(err)

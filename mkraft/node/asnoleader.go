@@ -38,10 +38,11 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 
 	// election related, both candidate/follower has the timeout to elect mechanism
 	var electionChan chan *MajorityRequestVoteResp
-	electionTimer := time.NewTimer(n.cfg.GetElectionTimeout())
-	defer electionTimer.Stop()
+	electionTicker := time.NewTicker(n.cfg.GetElectionTimeout())
+	defer electionTicker.Stop()
 
 	for {
+		n.logger.Debug("as noleader starts another loop")
 		select {
 		case <-ctx.Done():
 			n.logger.Warn("context done, exiting")
@@ -54,11 +55,12 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 					n.logger.Warn("context done, exiting")
 					return
 
-				case <-electionTimer.C:
-					n.logger.Debug("ELECTION: timeouts")
+				case <-electionTicker.C:
+					n.logger.Debug("election timeout, sending election request")
 					nextTimeout := n.cfg.GetElectionTimeout()
 					electionChan = n.asyncSendElection(ctx, nextTimeout)
-					electionTimer.Reset(nextTimeout)
+					electionTicker.Reset(nextTimeout)
+					n.logger.Debug("[election timeout reset] at sending election request", zap.Duration("timeout", nextTimeout))
 
 				case response := <-electionChan:
 					// the vote granted can change the candidate
@@ -71,7 +73,10 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 					}
 
 					// to trigger reset the election timer, it at least,should not be a error like timeout
-					electionTimer.Reset(n.cfg.GetElectionTimeout())
+					timeout := n.cfg.GetElectionTimeout()
+					electionTicker.Reset(timeout)
+					n.logger.Debug("[election timeout reset] at handling election response", zap.Duration("timeout", timeout))
+
 					if n.handleElectionResp(response) {
 						n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
 						go n.RunAsLeader(ctx)
@@ -83,7 +88,9 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 						n.logger.Warn("received a request vote from peers but it is timeout")
 						continue
 					}
-					electionTimer.Reset(n.cfg.GetElectionTimeout())
+					timeout := n.cfg.GetElectionTimeout()
+					electionTicker.Reset(timeout)
+					n.logger.Debug("[election timeout reset] at handling vote request", zap.Duration("timeout", timeout))
 
 					resp := n.receiveVoteRequestAsNoLeader(req.Req) // state changed inside
 					req.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
@@ -96,13 +103,17 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 						n.logger.Warn("append entry is timeout")
 						continue
 					}
-					electionTimer.Reset(n.cfg.GetElectionTimeout())
+					timeout := n.cfg.GetElectionTimeout()
+					electionTicker.Reset(timeout)
+					n.logger.Debug("[election timeout reset] at handling append entry", zap.Duration("timeout", timeout))
 
 					resp := n.receiveAppendEntriesAsNoLeader(ctx, req.Req)
+					n.logger.Debug("append entry response", zap.Any("resp", resp))
 					req.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 						Resp: resp,
 						Err:  nil,
 					}
+					n.logger.Debug("append entry response sent")
 				}
 			}
 		}

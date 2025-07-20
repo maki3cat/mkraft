@@ -137,7 +137,7 @@ func (n *nodeImpl) applyAllLaggedCommitedLogs(ctx context.Context) error {
 			n.logger.Error("failed to apply command to state machine", zap.Error(err))
 			return err
 		}
-		err = n.incrementLastApplied(uint64(len(logs)))
+		err = n.incrementLastApplied(uint64(len(logs)), false)
 		if err != nil {
 			if errors.Is(err, common.ErrInvariantsBroken) {
 				panic(err) // fatal error

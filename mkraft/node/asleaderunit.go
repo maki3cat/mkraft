@@ -133,7 +133,7 @@ func (n *nodeImpl) syncSendAppendEntries(ctx context.Context, clientCommands []*
 	} else {
 
 		// (4) the leader applies the command, and responds to the client
-		n.incrementCommitIdx(uint64(len(clientCommands)))
+		n.incrementCommitIdx(uint64(len(clientCommands)), false)
 
 		// (5) send to the apply command channel
 		for _, clientCommand := range clientCommands {
