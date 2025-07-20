@@ -5,47 +5,40 @@ import (
 	"sync"
 
 	"github.com/maki3cat/mkraft/common"
+	"github.com/maki3cat/mkraft/mkraft/peers"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
 	"go.uber.org/zap"
 )
 
-// synchronous call to until the a consensus is reached or the timeout failed
-// should be timeout within the election timeout
-func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) *MajorityRequestVoteResp {
+// THIS FILE IS ABOUT THE CONSENSUS OF THE REQUEST VOTE
 
+// ConsensusRequestVote attempts to reach consensus for a vote request within the given context deadline.
+// It retries on transient errors until either a majority is reached or the context is done.
+func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) *MajorityRequestVoteResp {
 	if !common.HasDeadline(ctx) {
 		panic("consensus context should have a deadline")
 	}
 
-	resChan := make(chan *MajorityRequestVoteResp, 1)
-	oneRound := func(ctx context.Context, resChan chan<- *MajorityRequestVoteResp) {
-		res := c.requestVoteOnce(ctx, req)
-		if res.Err != nil {
-			c.logger.Error("request vote one round failed",
-				zap.Error(res.Err),
-				zap.String("requestID", common.GetRequestID(ctx)))
-		}
-		resChan <- res
-	}
-
-	ctxWithCancel, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	for {
-		go oneRound(ctxWithCancel, resChan)
+		// Check if context is already done before starting a round
 		select {
 		case <-ctx.Done():
 			return &MajorityRequestVoteResp{
 				Err: common.ErrContextDone,
 			}
-		case res := <-resChan:
-			if res.Err != nil {
-				// Retry on error, but respect context cancellation
-				continue
-			}
-			return res
+		default:
 		}
+
+		res := c.requestVoteOnce(ctx, req)
+		if res.Err != nil {
+			c.logger.Error("request vote round failed",
+				zap.Error(res.Err),
+				zap.String("requestID", common.GetRequestID(ctx)))
+			// Retry on error, but respect context cancellation
+			continue
+		}
+		return res
 	}
 }
 
@@ -54,7 +47,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 // all rpc are timeoutbounded out of the box, so the function takes as long as the rpc timeout
 func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteRequest) *MajorityRequestVoteResp {
 
-	// check membership
+	// CHECK MEMBERSHIP
 	requestID := common.GetRequestID(ctx)
 	total := c.membership.GetTotalMemberCount()
 	peerClients, err := c.membership.GetAllPeerClients()
@@ -62,54 +55,53 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 		c.logger.Error("error in getting all peer clients",
 			zap.Error(err),
 			zap.String("requestID", requestID))
-		return &MajorityRequestVoteResp{
-			Err: common.ErrMembershipErr,
-		}
+		return &MajorityRequestVoteResp{Err: common.ErrMembershipErr}
 	}
 	if !calculateIfMajorityMet(total, len(peerClients)) {
 		c.logger.Error("Not enough peers for majority",
 			zap.Int("total", total),
 			zap.Int("peerCount", len(peerClients)),
 			zap.String("requestID", requestID))
-		return &MajorityRequestVoteResp{
-			Err: common.ErrMembershipErr,
+		return &MajorityRequestVoteResp{Err: common.ErrMembershipErr}
+	}
+
+	// FAN-OUT, FAN-IN
+	fanOutFunc := func(c peers.PeerClient, fanInChan chan<- utils.RPCRespWrapper[*rpc.RequestVoteResponse], wg *sync.WaitGroup) {
+		defer wg.Done()
+		resp, err := c.RequestVote(ctx, req)
+		res := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
+			Resp:       resp,
+			Err:        err,
+			PeerNodeID: c.GetNodeID(),
 		}
+		fanInChan <- res
 	}
 
 	peersCount := len(peerClients)
 	fanInChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
+	fanInChanDone := make(chan struct{})
 	wg := sync.WaitGroup{}
-	wg.Add(peersCount)
-
-	for _, member := range peerClients {
-		// FAN-OUT
-		go func() {
-			defer wg.Done()
-			memberHandle := member
-			// FAN-IN
-			resp, err := memberHandle.RequestVote(ctx, req)
-			res := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-				Resp:       resp,
-				Err:        err,
-				PeerNodeID: memberHandle.GetNodeID(),
-			}
-			fanInChan <- res
-		}()
+	for _, pc := range peerClients {
+		c := pc
+		wg.Add(1) // add cannot be concurrently with wait, so we cannot move it into another goroutine
+		go fanOutFunc(c, fanInChan, &wg)
 	}
+	go func() {
+		wg.Wait()
+		close(fanInChan)
+		close(fanInChanDone)
+	}()
 
-	// blocking point:wait for the response or the context is done
+	// wait until the fan-in is done or the context is done
 	select {
 	case <-ctx.Done():
 		return &MajorityRequestVoteResp{
 			Err: common.ErrContextDone,
 		}
-	case <-fanInChan:
-		wg.Wait()
-		close(fanInChan)
+	case <-fanInChanDone:
 	}
 
-	// FAN-IN WITH STOPPING SHORT
-	// filter out the errors
+	// filter out the rpc failures
 	voteFailed := 0
 	correctRes := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], len(peerClients))
 	for wrappedRes := range fanInChan {
@@ -125,12 +117,12 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 			correctRes <- wrappedRes
 		}
 	}
+	close(correctRes)
 	if calculateIfAlreadyFail(total, peersCount, 0, voteFailed) {
 		return &MajorityRequestVoteResp{
 			Err: common.ErrMajorityNotMet,
 		}
 	}
-	close(correctRes)
 
 	// analyze the responses
 	peerVoteAccumulated := 0 // the node itself is counted as a vote
@@ -163,5 +155,5 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 			}
 		}
 	}
-	panic("consensus of request vote should not reach here")
+	panic("a correct raft protocol should not reach here")
 }
