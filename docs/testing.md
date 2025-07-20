@@ -1,6 +1,11 @@
 
 https://www.notion.so/Bugs-Journal-2334ef7514ee808ab8cfc4801d362a23?source=copy_link
 
+
+## General Principles
+- use panics to guard 1) invariants and 2) cases that are not sure to be handled; for easy debugging, observability of problems and analysis for better handling of the errors;
+- inspired by using the WAL to verify isolation level, we analyze logs to ensure Raft is correctly implemented; (to be explained in detail);
+
 ## Correctness
 
 1. ELECTION SAFETY AND EFFICIENCY
