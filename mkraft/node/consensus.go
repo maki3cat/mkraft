@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
+
 type Consensus interface {
 
 	// synchronous call to until the a consensus is reached or is failed

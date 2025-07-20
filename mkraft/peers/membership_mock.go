@@ -122,15 +122,3 @@ func (mr *MockMembershipMockRecorder) Start(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockMembership)(nil).Start), ctx)
 }
-
-// TriggerRefresh mocks base method.
-func (m *MockMembership) TriggerRefresh(nodeID string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "TriggerRefresh", nodeID)
-}
-
-// TriggerRefresh indicates an expected call of TriggerRefresh.
-func (mr *MockMembershipMockRecorder) TriggerRefresh(nodeID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TriggerRefresh", reflect.TypeOf((*MockMembership)(nil).TriggerRefresh), nodeID)
-}

@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/maki3cat/mkraft/common"
-	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
 	"google.golang.org/grpc/codes"
 )
@@ -22,14 +21,13 @@ var _ PeerClient = (*peerClient)(nil)
 
 type PeerClient interface {
 
-	// 1. it has forever retry until the context is done or the response is received
-	// 2. it has retry logic to handle the rpc timeout -> which is handled by the timeoutClientInterceptor
-	// 3. it is synchronous call
-	RequestVoteWithRetry(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error)
-
 	// implementation gap:
 	// currently, the retry logic is simpler for append entries that we retry 3 times
+
 	AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error)
+
+	// no retry
+	RequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error)
 
 	GetNodeID() string
 
@@ -93,7 +91,6 @@ func (rc *peerClient) GetNodeID() string {
 
 func (rc *peerClient) Close() error {
 	if rc.conn != nil {
-		// todo: not sure close a stale connection returns an error or not
 		err := rc.conn.Close()
 		if err != nil {
 			rc.logger.Error("failed to close gRPC connection", zap.String("nodeID", rc.nodeId), zap.Error(err))
@@ -104,63 +101,16 @@ func (rc *peerClient) Close() error {
 	return nil
 }
 
-func (rc *peerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
-	requestID := common.GetRequestID(ctx)
-	rc.logger.Debug("send SendRequestVote",
-		zap.Any("request", req),
-		zap.String("requestID", requestID))
-	retryCount := 0
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, common.ContextDoneErr()
-		default:
-			singleResChan := rc.asyncCallRequestVote(ctx, req)
-			select {
-			case <-ctx.Done():
-				return nil, common.ContextDoneErr()
-			case resp := <-singleResChan:
-				if resp.Err != nil {
-					deadline, ok := ctx.Deadline()
-					remaining := time.Until(deadline)
-					if ok && remaining < rc.cfg.GetRPCDeadlineMargin() {
-						return nil, resp.Err
-					} else {
-						retryCount++
-						rc.logger.Error("RequestVoteWithRetry: retry on error:",
-							zap.Error(resp.Err),
-							zap.String("requestID", requestID),
-							zap.Duration("remaining", remaining),
-							zap.Int("retryCount", retryCount))
-						retryCount++
-						continue
-					}
-				} else {
-					return resp.Resp, nil
-				}
-			}
-		}
+func (rc *peerClient) RequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
+	resp, err := rc.rawClient.RequestVote(ctx, req)
+	if err != nil {
+		requestID := common.GetRequestID(ctx)
+		rc.logger.Error("single RPC error in rawClient.RequestVote:",
+			zap.Error(err),
+			zap.String("requestID", requestID))
+		return nil, err
 	}
-}
-
-// broadcast timeout is used in this caller
-func (rc *peerClient) asyncCallRequestVote(ctx context.Context, req *rpc.RequestVoteRequest) chan utils.RPCRespWrapper[*rpc.RequestVoteResponse] {
-	singleResChan := make(chan utils.RPCRespWrapper[*rpc.RequestVoteResponse], 1) // must be buffered
-	go func(ctx context.Context, req *rpc.RequestVoteRequest) {
-		resp, err := rc.rawClient.RequestVote(ctx, req)
-		if err != nil {
-			requestID := common.GetRequestID(ctx)
-			rc.logger.Error("single RPC error in rawClient.RequestVote:",
-				zap.Error(err),
-				zap.String("requestID", requestID))
-		}
-		wrapper := utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
-			Resp: resp,
-			Err:  err,
-		}
-		singleResChan <- wrapper
-	}(ctx, req)
-	return singleResChan
+	return resp, nil
 }
 
 func (rc *peerClient) AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
