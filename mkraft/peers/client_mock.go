@@ -84,17 +84,31 @@ func (mr *MockPeerClientMockRecorder) GetNodeID() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNodeID", reflect.TypeOf((*MockPeerClient)(nil).GetNodeID))
 }
 
-// RequestVoteWithRetry mocks base method.
-func (m *MockPeerClient) RequestVoteWithRetry(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
+// PeerConnCheck mocks base method.
+func (m *MockPeerClient) PeerConnCheck(ctx context.Context) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequestVoteWithRetry", ctx, req)
+	ret := m.ctrl.Call(m, "PeerConnCheck", ctx)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// PeerConnCheck indicates an expected call of PeerConnCheck.
+func (mr *MockPeerClientMockRecorder) PeerConnCheck(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PeerConnCheck", reflect.TypeOf((*MockPeerClient)(nil).PeerConnCheck), ctx)
+}
+
+// RequestVote mocks base method.
+func (m *MockPeerClient) RequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequestVote", ctx, req)
 	ret0, _ := ret[0].(*rpc.RequestVoteResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// RequestVoteWithRetry indicates an expected call of RequestVoteWithRetry.
-func (mr *MockPeerClientMockRecorder) RequestVoteWithRetry(ctx, req any) *gomock.Call {
+// RequestVote indicates an expected call of RequestVote.
+func (mr *MockPeerClientMockRecorder) RequestVote(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestVoteWithRetry", reflect.TypeOf((*MockPeerClient)(nil).RequestVoteWithRetry), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestVote", reflect.TypeOf((*MockPeerClient)(nil).RequestVote), ctx, req)
 }

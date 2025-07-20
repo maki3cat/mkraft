@@ -15,6 +15,7 @@ var ErrServerBusy = errors.New("server busy")
 // consensus errors
 var ErrNotEnoughPeersForConsensus = errors.New("not enough peers for consensus")
 var ErrMajorityNotMet = errors.New("majority not met")
+var ErrMembershipErr = errors.New("consensus stopped due to membership error")
 
 // invariants broken -> should be panic which means the system has serious bugs
 var ErrInvariantsBroken = errors.New("invariants broken")
