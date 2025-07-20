@@ -55,6 +55,14 @@ func configInvariantCheck(cfg *Config) {
 	if distance < 5*cfg.BasicConfig.RPCRequestTimeoutInMs {
 		panic("election timeout range must be at least 5 rpc timeouts")
 	}
+	// leader heartbeat period must be larger than the rpc timeout
+	// leader heartbeat period must be smaller than the min election timeout
+	if cfg.BasicConfig.LeaderHeartbeatPeriodInMs <= cfg.BasicConfig.RPCRequestTimeoutInMs {
+		panic("leader heartbeat period must be larger than the rpc timeout")
+	}
+	if cfg.BasicConfig.LeaderHeartbeatPeriodInMs >= (cfg.BasicConfig.ElectionTimeoutMinInMs / 2) {
+		panic("leader heartbeat period must be smaller than the min election timeout / 2")
+	}
 }
 
 func GetDefaultConfig() *Config {
@@ -85,15 +93,15 @@ const (
 
 	LEADER_BUFFER_SIZE = 1000
 	// if this is close to election timeout range lower bound, the leader may not be able to send heartbeat to followers in time
-	LEADER_HEARTBEAT_PERIOD_IN_MS = 50
+	LEADER_HEARTBEAT_PERIOD_IN_MS = 150
 
 	// paper: $5.6, the broadcast time should be an order of magnitude less thant the election timeout
 	RPC_REUQEST_TIMEOUT_IN_MS = 100
 	// reference: the Jeff-Dean's number everyone shall know
 	RPC_DEADLINE_MARGIN_IN_MICRO_SEC = 500
 
-	ELECTION_TIMEOUT_MIN_IN_MS = 3 * RPC_REUQEST_TIMEOUT_IN_MS
-	ELECTION_TIMEOUT_MAX_IN_MS = 9 * RPC_REUQEST_TIMEOUT_IN_MS
+	ELECTION_TIMEOUT_MIN_IN_MS = 4 * RPC_REUQEST_TIMEOUT_IN_MS
+	ELECTION_TIMEOUT_MAX_IN_MS = 10 * RPC_REUQEST_TIMEOUT_IN_MS
 
 	MIN_REMAINING_TIME_FOR_RPC_IN_MS = 150
 

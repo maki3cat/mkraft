@@ -119,8 +119,6 @@ func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct
 				return
 			// task1: send the heartbeat -> as leader, may degrade to follower
 			case <-tickerForHeartbeat.C:
-				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
-				n.logger.Debug("sending heartbeat")
 				unitResult, err := n.syncSendHeartbeat(ctx)
 				if err != nil {
 					// right now we panic all the time
@@ -132,7 +130,7 @@ func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct
 				}
 			// task2: handle the client command, need to change raftlog/state machine -> as leader, may degrade to follower
 			case clientCmd := <-n.clientCommandCh:
-				tickerForHeartbeat.Reset(n.cfg.GetElectionTimeout())
+				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
 				batchingSize := n.cfg.GetRaftNodeRequestBufferSize() - 1
 				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
 				clientCommands = append(clientCommands, clientCmd)
