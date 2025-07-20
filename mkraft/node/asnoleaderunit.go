@@ -66,7 +66,7 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 
 	var response rpc.AppendEntriesResponse
 	reqTerm := uint32(req.Term)
-	currentTerm, _, _ := n.getKeyState()
+	currentTerm, state, voteFor := n.getKeyState()
 
 	// return FALSE CASES:
 	// (1) fast track for the stale term
@@ -89,9 +89,10 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 	}()
 
 	// 2. update the term
-	// is the node is not a leader, we don't need the term to be larger, we only need it to be no-less
+	// if current term is same, and
 	returnedTerm := currentTerm
-	if reqTerm >= currentTerm {
+	if reqTerm > currentTerm ||
+		(reqTerm == currentTerm && (state == StateCandidate || voteFor != req.LeaderId)) {
 		err := n.ToFollower(req.LeaderId, reqTerm, false)
 		if err != nil {
 			n.logger.Error("key error: in ToFollower", zap.Error(err))
