@@ -17,6 +17,7 @@ type NodeState int
 
 const (
 	StateFollower NodeState = iota // candidate is also viewed as follower
+	StateCandidate
 	StateLeader
 )
 
@@ -24,6 +25,8 @@ func (state NodeState) String() string {
 	switch state {
 	case StateFollower:
 		return "Follower"
+	case StateCandidate:
+		return "Candidate"
 	case StateLeader:
 		return "Leader"
 	}

@@ -36,13 +36,12 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 		n.logger.Info("exited the noleader state successfully")
 	}()
 
-	// election related
+	// election related, both candidate/follower has the timeout to elect mechanism
 	var electionChan chan *MajorityRequestVoteResp
 	electionTimer := time.NewTimer(n.cfg.GetElectionTimeout())
 	defer electionTimer.Stop()
 
 	for {
-		currentTerm, _, _ := n.getKeyState()
 		select {
 		case <-ctx.Done():
 			n.logger.Warn("context done, exiting")
@@ -50,6 +49,7 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 		default:
 			{
 				select {
+
 				case <-ctx.Done():
 					n.logger.Warn("context done, exiting")
 					return
@@ -66,41 +66,20 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 					if !ok {
 						panic("consensusChan is not designed to be closed")
 					}
-					electionTimer.Reset(n.cfg.GetElectionTimeout())
 					if response.Err != nil {
 						n.logger.Error(
 							"candidate has error in election, try to re-elect after another election timeout",
 							zap.Error(response.Err))
 						continue
 					}
-					term, _, _ := n.getKeyState()
-					if response.VoteGranted {
-						// what if the term is higher
-						if response.Term == term {
-							n.ToLeader()
-							n.cleanupApplyLogsBeforeToLeader()
-							n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
-							go n.RunAsLeader(ctx)
-							return
-						} else if response.Term > term {
-							panic("cannot get the vote and a higher term")
-						} else {
-							n.logger.Warn("the term is lower, the voteRequestResult is stale")
-						}
-					} else {
-						if response.Term > currentTerm {
-							// keypoint: here the vote for shall be the one that sends the higher term,
-							// or when the one comes to ask for vote, it will get true
-							// if we save empty, we will not be able to get who wins the vote
-							err := n.ToFollower(response.PeerNodeIDWithHigherTerm, response.Term, false)
-							if err != nil {
-								n.logger.Error("key error: in ToFollower", zap.Error(err))
-								panic(err)
-							}
-							n.logger.Info("election failed, still running as a follower")
-						}
-					}
 
+					// to trigger reset the election timer, it at least,should not be a error like timeout
+					electionTimer.Reset(n.cfg.GetElectionTimeout())
+					if n.receiveRequestVoteResponse(response) {
+						n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
+						go n.RunAsLeader(ctx)
+						return
+					}
 				// if we separate these from the main loop, we need to test asyncSendElection checks the state
 				case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
 					if req.IsTimeout.Load() {
@@ -113,6 +92,7 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 						Resp: resp,
 						Err:  nil,
 					}
+
 				case req := <-n.appendEntryCh: // commonRule: handling appendEntry from a leader which can be stale or new
 					if req.IsTimeout.Load() {
 						n.logger.Warn("append entry is timeout")
