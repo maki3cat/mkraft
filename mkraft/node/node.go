@@ -16,7 +16,7 @@ import (
 type NodeState int
 
 const (
-	StateFollower NodeState = iota
+	StateFollower NodeState = iota // candidate is also viewed as follower
 	StateCandidate
 	StateLeader
 )
@@ -162,12 +162,10 @@ type nodeImpl struct {
 
 func (n *nodeImpl) Start(ctx context.Context) {
 	n.membership.Start(ctx)
-
-	go n.tracer.start(ctx)
 	currentTerm, state, votedFor := n.getKeyState()
 	n.tracer.add(currentTerm, n.NodeId, state, votedFor)
-	n.logger.Info("node starts ad follower")
-	go n.RunAsFollower(ctx)
+	go n.RunAsNoLeader(ctx)
+	go n.tracer.start(ctx)
 }
 
 // gracefully stop the node and cleanup

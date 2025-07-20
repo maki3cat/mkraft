@@ -92,7 +92,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 				n.logger.Info("leader degrade to follower, exiting")
 				subWorkerCancel()
 				waitGroup.Wait()
-				go n.RunAsFollower(ctx)
+				go n.RunAsNoLeader(ctx)
 				return
 			}
 		}

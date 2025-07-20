@@ -19,27 +19,23 @@ const (
 
 // this is called when the node is a candidate and receives enough votes
 // vote for and term are the same as the candidate's
-func (n *nodeImpl) ToLeader() error {
+func (n *nodeImpl) ToLeader(reEntrant bool) error {
 	n.logger.Debug("STATE CHANGE: to leader enters")
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
+	if !reEntrant {
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
 	n.state = StateLeader
 	n.tracer.add(n.CurrentTerm, n.NodeId, n.state, n.VotedFor)
 	n.logger.Debug("STATE CHANGE: to leader exits")
 	return nil
 }
 
-func (n *nodeImpl) ToCandidate(reEntrant bool) error {
-	n.logger.Debug("STATE CHANGE: to candidate", zap.Bool("reEntrant", reEntrant))
-	if !reEntrant {
-		n.stateRWLock.Lock()
-		defer n.stateRWLock.Unlock()
-	}
-
-	prevTerm := n.CurrentTerm
+func (n *nodeImpl) ToCandidate() error {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
 	term := n.CurrentTerm + 1
 	voteFor := n.NodeId
-
 	err := n.unsafePersistTermAndVoteFor(term, voteFor)
 	if err != nil {
 		panic(err)
@@ -49,7 +45,7 @@ func (n *nodeImpl) ToCandidate(reEntrant bool) error {
 	n.CurrentTerm = term
 	n.VotedFor = voteFor
 	n.tracer.add(n.CurrentTerm, n.NodeId, n.state, n.VotedFor)
-	n.logger.Debug("STATE CHANGE: to candidate exits", zap.Uint32("prevTerm", prevTerm), zap.Uint32("newTerm", term), zap.String("voteFor", n.NodeId))
+	n.logger.Debug("STATE CHANGE: to candidate exits", zap.Uint32("newTerm", term), zap.String("voteFor", n.NodeId))
 	return nil
 }
 

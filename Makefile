@@ -43,8 +43,8 @@ clean:
 integration-test: build
 	$(MAKE) serverclean
 	$(MAKE) serverstart
-	echo "Nodes running for 30 seconds..."
-	sleep 30
+	echo "Nodes running for 5 seconds..."
+	sleep 5
 	$(MAKE) serverstop
 	@ps aux | grep "mkraft"
 	echo "All nodes stopped"
@@ -66,7 +66,7 @@ serverstop:
 	-kill -15 $$(cat ./data/node1/node.pid)
 	-kill -15 $$(cat ./data/node2/node.pid)
 	-kill -15 $$(cat ./data/node3/node.pid)
-	sleep 10
+	sleep 3
 	rm -f ./data/node1/node.pid ./data/node2/node.pid ./data/node3/node.pid
 
 clientstart:
