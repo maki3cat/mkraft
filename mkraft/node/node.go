@@ -107,8 +107,6 @@ func NewNode(
 		panic(err)
 	}
 
-	// give the node to the consensus for callbacks
-	node.consensus.SetNodeToUpdateOn(node)
 	return node
 }
 

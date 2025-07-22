@@ -183,6 +183,7 @@ func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) erro
 	return nil
 }
 
+// returns: term, state, votedFor
 func (n *nodeImpl) getKeyState() (uint32, NodeState, string) {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()

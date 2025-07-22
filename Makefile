@@ -34,7 +34,7 @@ clean-mocks:
 
 build:
 	echo "Building the project..."
-	go build -o bin/mkraft cmd/main.go
+	go build -race -o bin/mkraft cmd/main.go
 
 clean:
 	rm bin/*

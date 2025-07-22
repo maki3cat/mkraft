@@ -2,10 +2,11 @@ package node
 
 import (
 	"context"
-	"sync"
-	"time"
 
+	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/utils"
+	"github.com/maki3cat/mkraft/rpc"
+
 	"go.uber.org/zap"
 )
 
@@ -64,19 +65,14 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	defer n.runLock.Unlock()
 	n.logger.Info("acquired the Semaphore as the LEADER state")
 
-	// maki: this is a tricky design (the whole design of the log/client command application is tricky)
-	// todo: catch up the log application to make sure lastApplied == commitIndex for the leader
-	n.leaderApplyCh = make(chan *utils.ClientCommandInternalReq, n.cfg.GetRaftNodeRequestBufferSize())
-
 	degradeChan := make(chan struct{})
 	subWorkerCtx, subWorkerCancel := context.WithCancel(ctx)
 	defer subWorkerCancel()
 
-	waitGroup := sync.WaitGroup{}
-	waitGroup.Add(3)
-	go n.leaderSendWorker(subWorkerCtx, degradeChan, &waitGroup)
-	go n.leaderReceiverWorker(subWorkerCtx, degradeChan, &waitGroup)
-	go n.leaderLogApplyWorker(subWorkerCtx, &waitGroup)
+	// one for handling requestVote and appendEntries from peers
+	go n.leaderReceiverWorker(subWorkerCtx, degradeChan)
+	// one for handling log replication
+	n.startLogReplicaitonPipeline(subWorkerCtx)
 
 	for {
 		select {
@@ -91,7 +87,6 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 			case <-degradeChan:
 				n.logger.Info("leader degrade to follower, exiting")
 				subWorkerCancel()
-				waitGroup.Wait()
 				go n.RunAsNoLeader(ctx)
 				return
 			}
@@ -99,59 +94,8 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	}
 }
 
-// sender is named from the perspective of sending request to other nodes
-// receiving the client commands triggers sending so put in the same worker
-func (n *nodeImpl) leaderSendWorker(ctx context.Context, degradeChan chan struct{}, workerWaitGroup *sync.WaitGroup) {
-	defer workerWaitGroup.Done()
-	defer n.cleanupApplyLogsBeforeToFollower()
-
-	tickerForHeartbeat := time.NewTicker(n.cfg.GetLeaderHeartbeatPeriod())
-	defer tickerForHeartbeat.Stop()
-	for {
-		select {
-		case <-ctx.Done(): // give ctx higher priority
-			n.logger.Warn("raft node main context done, exiting")
-			return
-		default:
-			select {
-			case <-ctx.Done():
-				n.logger.Warn("raft node main context done, exiting")
-				return
-			// task1: send the heartbeat -> as leader, may degrade to follower
-			case <-tickerForHeartbeat.C:
-				unitResult, err := n.syncSendHeartbeat(ctx)
-				if err != nil {
-					// right now we panic all the time
-					panic(err)
-				}
-				if unitResult.ShallDegrade {
-					close(degradeChan)
-					return
-				}
-			// task2: handle the client command, need to change raftlog/state machine -> as leader, may degrade to follower
-			case clientCmd := <-n.clientCommandCh:
-				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
-				batchingSize := n.cfg.GetRaftNodeRequestBufferSize() - 1
-				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize)
-				clientCommands = append(clientCommands, clientCmd)
-				n.logger.Debug("sending append entries", zap.Int("clientCommandsLen", len(clientCommands)))
-				unitResult, err := n.syncSendAppendEntries(clientCmd.Ctx, clientCommands)
-				if err != nil {
-					panic(err)
-				}
-				if unitResult.ShallDegrade {
-					close(degradeChan)
-					return
-				}
-			}
-		}
-	}
-}
-
-// receiver is named from the perspective of receiving request from other nodes
-// not receiving from clients
-func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan struct{}, workerWaitGroup *sync.WaitGroup) {
-	defer workerWaitGroup.Done()
+// handle the requestVote and appendEntries from other nodes
+func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan struct{}) {
 	for {
 		select {
 		case <-ctx.Done(): // give ctx higher priority
@@ -187,4 +131,84 @@ func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan st
 	}
 }
 
-// ---------------------------------------small unit helper functions for the leader-------------------------------------
+// ---------------------------------------the receiver units for the leader-------------------------------------
+
+// critical section: readwrite the meta-state, protected by the stateRWLock
+// fast, no IO
+func (n *nodeImpl) recvAppendEntriesAsLeader(internalReq *utils.AppendEntriesInternalReq) (UnitResult, error) {
+	requestID := common.GetRequestID(internalReq.Ctx)
+	n.logger.Debug("recvAppendEntriesAsLeader: received an append entries request", zap.Any("req", internalReq.Req), zap.String("requestID", requestID))
+	req := internalReq.Req
+	reqTerm := req.Term
+	resp := new(rpc.AppendEntriesResponse)
+	defer func() {
+		internalReq.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
+			Resp: resp,
+			Err:  nil,
+		}
+		n.logger.Debug("recvAppendEntriesAsLeader: returned an append entries response", zap.Any("resp", resp), zap.String("requestID", requestID))
+	}()
+
+	// protect the state read/write
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+
+	if reqTerm > n.CurrentTerm {
+		n.ToFollower(req.LeaderId, reqTerm, true)
+		// implementation gap:
+		// maki: this may be a very tricky design in implementation,
+		// but this simplifies the logic here
+		// 3rd reply the response, we directly reject, and fix the log after
+		// the leader degrade to follower
+
+		// todo: tricky case
+		// so this gives rise to a case the leader gets false in appendEntries but the term is same
+		// the leader should retry the appendEntries for 3 times, if still false, should fail the clientCommands?
+		resp.Success = false
+		resp.Term = reqTerm
+		return UnitResult{ShallDegrade: true}, nil
+	} else if reqTerm < n.CurrentTerm {
+		resp.Term = n.CurrentTerm
+		resp.Success = false
+		return UnitResult{ShallDegrade: false}, nil
+	} else {
+		panic("shouldn't happen, break the property of Election Safety")
+	}
+}
+
+// critical section: readwrite the meta-state, protected by the stateRWLock
+// fast, no IO
+func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInternalReq) (UnitResult, error) {
+
+	req := internalReq.Req
+	resp := new(rpc.RequestVoteResponse)
+	defer func() {
+		internalReq.RespChan <- &utils.RPCRespWrapper[*rpc.RequestVoteResponse]{
+			Resp: resp,
+			Err:  nil,
+		}
+	}()
+
+	// synchronization
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+
+	if n.CurrentTerm < req.Term {
+		lastLogIdx, lastLogTerm := n.raftLog.GetLastLogIdxAndTerm()
+		if (req.LastLogTerm > lastLogTerm) || (req.LastLogTerm == lastLogTerm && req.LastLogIndex >= lastLogIdx) {
+			err := n.ToFollower(req.CandidateId, req.Term, true) // requestVote comes from the candidate, so we use the candidateId
+			if err != nil {
+				n.logger.Error("error in ToFollower", zap.Error(err))
+				panic(err)
+			}
+			resp.Term = n.CurrentTerm
+			resp.VoteGranted = true
+			return UnitResult{ShallDegrade: true}, nil
+		}
+	}
+
+	// the leader should reject the vote in all other cases
+	resp.Term = n.CurrentTerm
+	resp.VoteGranted = false
+	return UnitResult{ShallDegrade: false}, nil
+}

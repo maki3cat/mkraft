@@ -206,6 +206,7 @@ func (c *Config) GetElectionTimeout() time.Duration {
 	return time.Duration(randomMs) * time.Millisecond
 }
 
+// the batch size and the buffer size are the same for now
 func (c *Config) GetRaftNodeRequestBufferSize() int {
 	b := c.BasicConfig
 	return b.RaftNodeRequestBufferSize

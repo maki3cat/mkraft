@@ -60,13 +60,6 @@ func (n *nodeImpl) leaderLogApplyWorker(ctx context.Context, workerWaitGroup *sy
 	}
 }
 
-// Case-3: AS A Leader, but stale
-// implementation gap:
-// it can give up serving clients, just drain/return no leader leaderApplyCh, and leave the work to follower
-func (n *nodeImpl) cleanupApplyLogsBeforeToFollower() {
-	utils.DrainChannel(n.leaderApplyCh, n.cfg.GetRaftNodeRequestBufferSize())
-}
-
 // ---------------------------------------As a Follower/Candidate: -------------------------------------
 // Case-4: AS A Follower/Candidate
 // When a follower/candidate commits a new log

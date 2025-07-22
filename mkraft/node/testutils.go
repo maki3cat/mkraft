@@ -29,7 +29,6 @@ func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 	membership := peers.NewMockMembership(ctrl)
 	statemachine := plugs.NewMockStateMachine(ctrl)
 	consensus := NewMockConsensus(ctrl)
-	consensus.EXPECT().SetNodeToUpdateOn(gomock.Any()).AnyTimes()
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog, consensus)
 	node := n.(*nodeImpl)
