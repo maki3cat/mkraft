@@ -141,7 +141,3 @@ func (n *nodeImpl) syncSendAppendEntries(ctx context.Context, clientCommands []*
 		return UnitResult{ShallDegrade: false}, nil
 	}
 }
-
-func (n *nodeImpl) syncSendHeartbeat(ctx context.Context) (UnitResult, error) {
-	return n.syncSendAppendEntries(ctx, nil)
-}
