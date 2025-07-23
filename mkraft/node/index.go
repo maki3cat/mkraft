@@ -175,16 +175,14 @@ func (n *nodeImpl) decrPeerIdxAfterLogRepli(nodeID string) {
 	}
 }
 
-// nextIndex start from 1 when the leaders' logs length is zero
-// matchIndex start from 0 when the leaders' logs length is zero
 func (n *nodeImpl) getPeersNextIndex(nodeID string) uint64 {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
 	if index, ok := n.nextIndex[nodeID]; ok {
 		return index
 	} else {
-		n.nextIndex[nodeID], n.matchIndex[nodeID] = n.getInitDefaultValuesForPeer()
-		return n.nextIndex[nodeID]
+		// should initialize the next index to 1 when the leader is elected
+		panic("next index is not found")
 	}
 }
 
@@ -201,15 +199,21 @@ func (n *nodeImpl) setPeerIndex(nodeID string, nextIndex uint64, matchIndex uint
 	n.matchIndex[nodeID] = matchIndex
 }
 
-// returns nextIndex, matchIndex
-func (n *nodeImpl) getInitDefaultValuesForPeer() (uint64, uint64) {
-	return n.raftLog.GetLastLogIdx() + 1, 0
-}
-
 func (n *nodeImpl) IncrPeerIdx(nodeID string, idx uint64) {
 	n.incrPeerIdxAfterLogRepli(nodeID, idx)
 }
 
 func (n *nodeImpl) DecrPeerIdx(nodeID string) {
 	n.decrPeerIdxAfterLogRepli(nodeID)
+}
+
+func (n *nodeImpl) initPeerIndex(nodeIDs []string) {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	n.nextIndex = make(map[string]uint64)
+	n.matchIndex = make(map[string]uint64)
+	for _, nodeID := range nodeIDs {
+		n.nextIndex[nodeID] = n.raftLog.GetLastLogIdx() + 1
+		n.matchIndex[nodeID] = 0
+	}
 }

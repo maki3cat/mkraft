@@ -16,6 +16,14 @@ type DegradeSignal struct {
 	ToTerm       uint32
 }
 
+func (n *nodeImpl) initializePeerIndex() {
+	peerIDs, err := n.membership.GetAllPeerNodeIDs()
+	if err != nil {
+		panic(err)
+	}
+	n.initPeerIndex(peerIDs)
+}
+
 func (n *nodeImpl) RunAsLeader(ctx context.Context) {
 	n.runAsLeaderImpl(ctx)
 }
@@ -26,6 +34,9 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	}
 	n.runLock.Lock()
 	defer n.runLock.Unlock()
+
+	// important initialization, should be before the leader really starts to work
+	n.initializePeerIndex()
 
 	// at least one slot is needed so that the sender will not block, we don't need to buffer more than one signal
 	n.leaderDegradeCh = make(chan DegradeSignal, 1)

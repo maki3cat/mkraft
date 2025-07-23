@@ -105,6 +105,7 @@ func (n *nodeImpl) stage2AppendEntries(
 				case <-ctx.Done():
 					return
 				case <-inTriggerChan:
+					n.logger.Debug("append entries triggered")
 					common.BroadcastNonBlocking(peerChans)
 				}
 			}
@@ -162,6 +163,7 @@ func (n *nodeImpl) sendAppendEntriesToPeerLoop(ctx context.Context, nodeID strin
 	respChan := make(chan *rpc.AppendEntriesResponse, 1)
 	errChan := make(chan error, 1)
 	callPeer := func() {
+		n.logger.Debug("sendAppendEntriesToPeer", zap.String("nodeID", nodeID))
 		resp, err := n.sendAppendEntriesToPeer(ctx, nodeID)
 		if err != nil {
 			n.logger.Error("send append entries to peer returns error", zap.String("nodeID", nodeID), zap.Error(err))
@@ -179,6 +181,7 @@ func (n *nodeImpl) sendAppendEntriesToPeerLoop(ctx context.Context, nodeID strin
 			return false
 		case resp := <-respChan:
 			if resp == nil { // no logs to send
+				n.logger.Error("send append entries to peer returns nil", zap.String("nodeID", nodeID))
 				return false
 			}
 			if resp.Success {
@@ -207,8 +210,7 @@ func (n *nodeImpl) sendAppendEntriesToPeer(
 		return nil, err
 	}
 	if len(logs) == 0 {
-		n.logger.Debug("no logs to send", zap.String("nodeID", nodeID), zap.Uint64("nextIdx", nextIdx))
-		return nil, nil
+		n.logger.Debug("no logs appended, only heartbeat", zap.String("nodeID", nodeID), zap.Uint64("nextIdx", nextIdx))
 	}
 	prevLogIndex := nextIdx - 1
 	prevLogTerm, err := n.raftLog.GetTermByIndex(prevLogIndex)

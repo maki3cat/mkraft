@@ -137,15 +137,14 @@ func (rl *raftLogs) ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, err
 	return logs, nil
 }
 
-// maki: implmentation gap, decide to use all index starting from 0
-// so the initialization of matchIndex is -1, and nextIndex is len(logs)
+// nextIdx starts from 1, the data-slice index starts from 0
 func (rl *raftLogs) GetLogs(nextIdx uint64, maxLen int) ([]*RaftLogEntry, error) {
-	if nextIdx == 0 {
+	if nextIdx == 1 {
 		return nil, nil
 	}
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
-	// change from raft log index (from 1) to slice index (from 0)
+
 	sliceNextIndex := int(nextIdx) - 1
 	if sliceNextIndex < 0 || sliceNextIndex > len(rl.logs) {
 		return nil, fmt.Errorf("invalid index: %d", nextIdx)
@@ -163,7 +162,7 @@ func (rl *raftLogs) GetLogs(nextIdx uint64, maxLen int) ([]*RaftLogEntry, error)
 
 }
 
-// index starts from 1
+// raft log index starts from 1
 func (rl *raftLogs) GetLastLogIdxAndTerm() (uint64, uint32) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()

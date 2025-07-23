@@ -150,12 +150,16 @@ type nodeImpl struct {
 }
 
 func (n *nodeImpl) Start(ctx context.Context) {
+	// initialize the index
 	n.membership.Start(ctx)
 	currentTerm, state, votedFor := n.getKeyState()
 	n.tracer.add(currentTerm, n.NodeId, state, votedFor)
 	go n.RunAsNoLeader(ctx)
 	go n.tracer.start(ctx)
+
+	// todo:  should wait after raft log is up
 }
+
 
 // gracefully stop the node and cleanup
 func (n *nodeImpl) GracefulStop() {

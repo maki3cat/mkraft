@@ -142,15 +142,7 @@ func TestGetPeersNextIndex(t *testing.T) {
 	assert.Equal(t, uint64(10), index)
 
 	// Test new peer
-	index = node.getPeersNextIndex("peer2")
-	assert.Equal(t, uint64(1), index) // Assuming GetLastLogIdx returns 0 for empty log
-}
-
-func TestGetInitDefaultValuesForPeer(t *testing.T) {
-	node, ctrl := newMockNode(t)
-	defer cleanUpTmpDir(ctrl)
-
-	nextIndex, matchIndex := node.getInitDefaultValuesForPeer()
-	assert.Equal(t, uint64(1), nextIndex) // Assuming GetLastLogIdx returns 0 for empty log
-	assert.Equal(t, uint64(0), matchIndex)
+	assert.Panics(t, func() {
+		_ = node.getPeersNextIndex("peer2")
+	})
 }
