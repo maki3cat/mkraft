@@ -26,8 +26,8 @@ mockgen: clean-mocks
 
 	mockgen -source=mkraft/plugs/statemachine.go -destination=./mkraft/plugs/statemachine_mock.go -package plugs
 
-	mockgen -source=mkraft/log/raftlog.go -destination=./mkraft/log/raftlog_mock.go -package log
-	mockgen -source=mkraft/log/serde.go -destination=./mkraft/log/serde_mock.go -package log
+	mockgen -source=mkraft/persister/raftlog.go -destination=./mkraft/persister/raftlog_mock.go -package persister
+	mockgen -source=mkraft/persister/serde.go -destination=./mkraft/persister/serde_mock.go -package persister
 
 clean-mocks:
 	find . -type f -name '*_mock.go' -exec rm -f {} +
