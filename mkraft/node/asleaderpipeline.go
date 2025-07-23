@@ -14,7 +14,15 @@ var (
 )
 
 func (n *nodeImpl) startLogReplicaitonPipeline(ctx context.Context) {
-	appendEntriesTriggerChan := n.appendLocalLogs(ctx)
+
+	// stage 1: append logs
+	stage1OutChan := make(chan struct{}, 1)
+	go n.stageAppendLocalLogs(ctx, stage1OutChan)
+
+
+	// stage 2: send append entries/heartbeat
+
+	appendEntriesTriggerChan := n.stageSendAppendEntriesToPeers(ctx, stage1OutChan)
 	consensusLogsTriggerChan := n.sendAppendEntriesToPeers(ctx, appendEntriesTriggerChan)
 	commitIdxTriggerChan := n.updateCommitIdx(ctx, consensusLogsTriggerChan)
 	n.applyLogsAndRespond(ctx, commitIdxTriggerChan)
@@ -23,59 +31,48 @@ func (n *nodeImpl) startLogReplicaitonPipeline(ctx context.Context) {
 // stage 1: append logs
 // in-channel: client commands
 // out-channel: send append entries trigger
-func (n *nodeImpl) appendLocalLogs(ctx context.Context) <-chan struct{} {
-	name := "leader-pipeline-stage1: appendLocalLogs"
-	triggerChan := make(chan struct{}, 1)
-	go func(ctx context.Context) {
-		n.logger.Info("starting: ", zap.String("step", name))
-		tickerForHeartbeat := time.NewTicker(n.cfg.GetLeaderHeartbeatPeriod())
-		defer tickerForHeartbeat.Stop()
-		for {
+func (n *nodeImpl) stageAppendLocalLogs(ctx context.Context, outChan chan<- struct{}) {
+	name := "leader-pipe-s1: appendLocalLogs"
+	n.logger.Info("starting: ", zap.String("step", name))
+	tickerForHeartbeat := time.NewTicker(n.cfg.GetLeaderHeartbeatPeriod())
+	defer tickerForHeartbeat.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			n.logger.Warn("context done, exiting", zap.String("step", name))
+			return
+		default:
 			select {
 			case <-ctx.Done():
 				n.logger.Warn("context done, exiting", zap.String("step", name))
 				return
-			default:
-				select {
-				case <-ctx.Done():
-					n.logger.Warn("context done, exiting", zap.String("step", name))
-					return
-				case <-tickerForHeartbeat.C:
-					n.logger.Debug("heartbeat triggered", zap.String("step", name))
-					// non-blocking trigger the next stage
-					select {
-					case triggerChan <- struct{}{}:
-					default:
-					}
-				case clientCmd := <-n.clientCommandCh:
-					n.logger.Debug("client commands triggered", zap.String("step", name))
+			case <-tickerForHeartbeat.C:
+				n.logger.Debug("heartbeat triggered", zap.String("step", name))
+				common.NonBlockingSend(outChan)
+			case clientCmd := <-n.clientCommandCh:
+				n.logger.Debug("client commands triggered", zap.String("step", name))
 
-					batchingSize := n.cfg.GetRaftNodeRequestBufferSize()
-					clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize-1)
-					clientCommands = append(clientCommands, clientCmd)
+				batchingSize := n.cfg.GetRaftNodeRequestBufferSize()
+				clientCommands := utils.ReadMultipleFromChannel(n.clientCommandCh, batchingSize-1)
+				clientCommands = append(clientCommands, clientCmd)
 
-					// leader only append logs
-					currentTerm, _, _ := n.getKeyState()
-					commands := make([][]byte, len(clientCommands))
-					for i, clientCommand := range clientCommands {
-						commands[i] = clientCommand.Req.Command
-					}
-					err := n.raftLog.AppendLogsInBatch(ctx, commands, currentTerm)
-					if err != nil {
-						n.logger.Error("append logs in batch failed", zap.String("step", name), zap.Error(err))
-					}
-
-					// non-blocking trigger the next stage
-					tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
-					select {
-					case triggerChan <- struct{}{}:
-					default:
-					}
+				// leader only append logs
+				currentTerm, _, _ := n.getKeyState()
+				commands := make([][]byte, len(clientCommands))
+				for i, clientCommand := range clientCommands {
+					commands[i] = clientCommand.Req.Command
 				}
+				err := n.raftLog.AppendLogsInBatch(ctx, commands, currentTerm)
+				if err != nil {
+					n.logger.Error("append logs in batch failed", zap.String("step", name), zap.Error(err))
+				}
+
+				// non-blocking trigger the next stage
+				tickerForHeartbeat.Reset(n.cfg.GetLeaderHeartbeatPeriod())
+				common.NonBlockingSend(outChan)
 			}
 		}
-	}(ctx)
-	return triggerChan
+	}
 }
 
 // step5: with new commit idx, apply the logs to the state machine

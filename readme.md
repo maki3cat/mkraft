@@ -9,9 +9,8 @@ It has a lot of work, and I'm happy to receive "donations" in the form of a :sta
 - [What this Project is About](#what-this-project-is-about)
 - [What I am currently Doing](#what-i-am-currently-doing)
 - [Implementation Models](#implementation-models)
-  - [the General Arch](#the-general-arch)
+  - [the Key Component](#the-key-component)
   - [the Meta-State Machine](#the-meta-state-machine)
-  - [Peek Inside the Leader](#peek-inside-the-leader)
   - [the 2 types of Goroutine Management](#the-2-types-of-goroutine-management)
 - [Extreme Engineering](#extreme-engineering)
 - [Educational](#educational)
@@ -29,7 +28,7 @@ A Raft implementation to be with a Domain-specific Database:
 - to find some new **INNOVATION** possiblity for this old protocol;
 - **EDUCATION** purpose to help navigate colledge students from small labs to real project; and also show what college students can do;
 
-<img src="img/logo.jpg" alt="My Image" align="right" width="250">
+<!-- <img src="img/logo.jpg" alt="My Image" align="right" width="250"> -->
 
 ## What I am currently Doing
 
@@ -45,31 +44,31 @@ For detailed information on testing, see [docs/testing.md](docs/testing.md). You
 
 From Toy to Industry requires knowing the gap, and I am reading others' designs and source code as my daily learning
 
-**currently more from**
-- [tigerbeetle's doc of vsr](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/internals/vsr.md#protocol-ping-replica-replica)
-- [tigerbeetle's src of vsr](https://github.com/tigerbeetle/tigerbeetle/tree/main/src/vsr)
-**in the future, will compare to**
-- [hashicorp's raft](https://github.com/hashicorp/raft)
+<!-- **currently more from** -->
+<!-- - [tigerbeetle's doc of vsr](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/internals/vsr.md#protocol-ping-replica-replica)
+- [tigerbeetle's src of vsr](https://github.com/tigerbeetle/tigerbeetle/tree/main/src/vsr) -->
+<!-- **in the future, will compare to**
+- [hashicorp's raft](https://github.com/hashicorp/raft) -->
 
 
 ## Implementation Models
 
-### the General Arch
+### the Key Component
+
+<a href="img/impl_design_v2.jpg">
+  <img src="img/impl_design_v2.jpg" alt="design-v1" align="right">
+</a> -->
+
+<!-- ### the General Arch
 
 <a href="img/impl_design_v1.jpg">
   <img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
-</a>
+</a> -->
 
 ### the Meta-State Machine
 
 <a href="img/impl_design_state_v2.jpg">
   <img src="img/impl_design_state_v2.jpg" alt="design-v1" align="right">
-</a>
-
-### Peek Inside the Leader
-
-<a href="img/impl_design_asleader.jpg">
-  <img src="img/impl_design_asleader.jpg" alt="design-v1" align="right">
 </a>
 
 ### the 2 types of Goroutine Management
