@@ -10,6 +10,12 @@ import (
 	"go.uber.org/zap"
 )
 
+type DegradeSignal struct {
+	ShallDegrade bool
+	VotedFor     string
+	ToTerm       uint32
+}
+
 func (n *nodeImpl) RunAsLeader(ctx context.Context) {
 	n.runAsLeaderImpl(ctx)
 }
@@ -21,7 +27,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	n.runLock.Lock()
 	defer n.runLock.Unlock()
 
-	degradeChan := make(chan struct{})
+	degradeChan := make(chan DegradeSignal)
 	subWorkerCtx, subWorkerCancel := context.WithCancel(ctx)
 
 	defer subWorkerCancel()
@@ -49,7 +55,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 }
 
 // handle the requestVote and appendEntries from other nodes
-func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan struct{}) {
+func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan DegradeSignal) {
 	for {
 		select {
 		case <-ctx.Done(): // give ctx higher priority

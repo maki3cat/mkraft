@@ -16,7 +16,7 @@ func BroadcastNonBlocking(triggerChans []chan struct{}) {
 	}
 }
 
-func DrainChannel(ch chan struct{}) {
+func DrainChannel(ch <-chan struct{}) {
 	for {
 		select {
 		case <-ch:

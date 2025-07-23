@@ -140,6 +140,9 @@ func (rl *raftLogs) ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, err
 // maki: implmentation gap, decide to use all index starting from 0
 // so the initialization of matchIndex is -1, and nextIndex is len(logs)
 func (rl *raftLogs) GetLogs(nextIdx uint64, maxLen int) ([]*RaftLogEntry, error) {
+	if nextIdx == 0 {
+		return nil, nil
+	}
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	// change from raft log index (from 1) to slice index (from 0)

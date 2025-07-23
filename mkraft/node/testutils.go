@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/maki3cat/mkraft/common"
-	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/mkraft/peers"
 	"github.com/maki3cat/mkraft/mkraft/plugs"
+	"github.com/maki3cat/mkraft/persister"
 	gomock "go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 )
@@ -15,7 +15,7 @@ import (
 func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 	ctrl := gomock.NewController(t)
 
-	mockRaftLog := log.NewMockRaftLogs(ctrl)
+	mockRaftLog := persister.NewMockRaftLogs(ctrl)
 	mockRaftLog.EXPECT().GetLastLogIdx().Return(uint64(0)).AnyTimes()
 	mockRaftLog.EXPECT().CheckPreLog(gomock.Any(), gomock.Any()).Return(true).AnyTimes()
 

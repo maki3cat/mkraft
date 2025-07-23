@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/maki3cat/mkraft/common"
@@ -72,15 +73,34 @@ func (n *nodeImpl) getCommitIdx() uint64 {
 	return n.commitIndex
 }
 
-// From Paper:
-// • If there exists an N such that N > commitIndex, a majority
-// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
-// implementation gap:
-// we currently wait for every appendEntries to reach consensus, and then update the commitIdx
-// so we don't reply on matchIndex to update the commitIdx
-// not sure this is a good idea, but this design makes the implementation SIMPLE
-// todo: important
-// so we can prove this 1) test cases; 2) comparison with Hashicorp Raft implementation
+func (n *nodeImpl) UpdateCommit() bool {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	// sort matchIndex by index value not the key
+	matchIndex := make([]uint64, 0, len(n.matchIndex))
+	for _, idx := range n.matchIndex {
+		matchIndex = append(matchIndex, idx)
+	}
+	sort.Slice(matchIndex, func(i, j int) bool {
+		return matchIndex[i] < matchIndex[j]
+	})
+	idx := len(matchIndex) / 2
+	commitIdx := matchIndex[idx]
+	if commitIdx > n.commitIndex {
+		n.commitIndex = commitIdx
+		// it seems since the commitIdx can be volatile,
+		// and we save only to have better performance,
+		// we don't need ensure the save is successful or not ?
+		// we only need to know if it writes something, it is atomic
+		err := n.unsafeSaveIdx()
+		if err != nil {
+			n.logger.Error("failed to save index, and we continue", zap.Error(err))
+		}
+		return true
+	}
+	return false
+}
+
 func (n *nodeImpl) incrementCommitIdx(numberOfCommand uint64, reEntrant bool) error {
 	if !reEntrant {
 		n.logger.Debug("incrementCommitIdx: lock acquired")
@@ -166,6 +186,19 @@ func (n *nodeImpl) getPeersNextIndex(nodeID string) uint64 {
 		n.nextIndex[nodeID], n.matchIndex[nodeID] = n.getInitDefaultValuesForPeer()
 		return n.nextIndex[nodeID]
 	}
+}
+
+func (n *nodeImpl) setPeerNextIndex(nodeID string, nextIndex uint64) {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	n.nextIndex[nodeID] = nextIndex
+}
+
+func (n *nodeImpl) setPeerIndex(nodeID string, nextIndex uint64, matchIndex uint64) {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	n.nextIndex[nodeID] = nextIndex
+	n.matchIndex[nodeID] = matchIndex
 }
 
 // returns nextIndex, matchIndex
