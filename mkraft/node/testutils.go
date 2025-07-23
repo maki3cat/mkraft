@@ -6,8 +6,8 @@ import (
 
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft/peers"
+	"github.com/maki3cat/mkraft/mkraft/persister"
 	"github.com/maki3cat/mkraft/mkraft/plugs"
-	"github.com/maki3cat/mkraft/persister"
 	gomock "go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 )

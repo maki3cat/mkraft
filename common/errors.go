@@ -28,3 +28,6 @@ var ErrDeadlineInThePast = errors.New("deadline in the past")
 
 // corrupt data
 var ErrCorruptLine = errors.New("corrupt line")
+
+// state change
+var ErrStateChangeFromLeaderToFollower = errors.New("state change from leader to follower")

@@ -27,12 +27,13 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 	n.runLock.Lock()
 	defer n.runLock.Unlock()
 
-	degradeChan := make(chan DegradeSignal)
+	// at least one slot is needed so that the sender will not block, we don't need to buffer more than one signal
+	n.leaderDegradeCh = make(chan DegradeSignal, 1)
 	subWorkerCtx, subWorkerCancel := context.WithCancel(ctx)
 
 	defer subWorkerCancel()
-	go n.leaderReceiverWorker(subWorkerCtx, degradeChan)
-	n.startLogReplicaitonPipeline(subWorkerCtx)
+	go n.runLeaderReceiver(subWorkerCtx)
+	go n.runLogReplicaitonPipeline(subWorkerCtx)
 
 	for {
 		select {
@@ -44,7 +45,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 			case <-ctx.Done():
 				n.logger.Warn("raft node main context done, exiting")
 				return
-			case <-degradeChan:
+			case <-n.leaderDegradeCh:
 				n.logger.Info("leader degrade to follower, exiting")
 				subWorkerCancel()
 				go n.RunAsNoLeader(ctx)
@@ -55,7 +56,7 @@ func (n *nodeImpl) runAsLeaderImpl(ctx context.Context) {
 }
 
 // handle the requestVote and appendEntries from other nodes
-func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan DegradeSignal) {
+func (n *nodeImpl) runLeaderReceiver(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done(): // give ctx higher priority
@@ -73,7 +74,8 @@ func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan De
 					panic(err)
 				}
 				if unitResult.ShallDegrade {
-					close(degradeChan)
+					// todo: change this to send a signal to the pipeline
+					close(n.leaderDegradeCh)
 					return
 				}
 			case internalReq := <-n.appendEntryCh:
@@ -83,7 +85,8 @@ func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan De
 					panic(err)
 				}
 				if unitResult.ShallDegrade {
-					close(degradeChan)
+					// todo: change this to send a signal to the pipeline
+					close(n.leaderDegradeCh)
 					return
 				}
 			}
@@ -95,7 +98,7 @@ func (n *nodeImpl) leaderReceiverWorker(ctx context.Context, degradeChan chan De
 
 // critical section: readwrite the meta-state, protected by the stateRWLock
 // fast, no IO
-func (n *nodeImpl) recvAppendEntriesAsLeader(internalReq *utils.AppendEntriesInternalReq) (UnitResult, error) {
+func (n *nodeImpl) recvAppendEntriesAsLeader(internalReq *utils.AppendEntriesInternalReq) (DegradeSignal, error) {
 	requestID := common.GetRequestID(internalReq.Ctx)
 	n.logger.Debug("recvAppendEntriesAsLeader: received an append entries request", zap.Any("req", internalReq.Req), zap.String("requestID", requestID))
 	req := internalReq.Req
@@ -126,11 +129,11 @@ func (n *nodeImpl) recvAppendEntriesAsLeader(internalReq *utils.AppendEntriesInt
 		// the leader should retry the appendEntries for 3 times, if still false, should fail the clientCommands?
 		resp.Success = false
 		resp.Term = reqTerm
-		return UnitResult{ShallDegrade: true}, nil
+		return DegradeSignal{ShallDegrade: true}, nil
 	} else if reqTerm < n.CurrentTerm {
 		resp.Term = n.CurrentTerm
 		resp.Success = false
-		return UnitResult{ShallDegrade: false}, nil
+		return DegradeSignal{ShallDegrade: false}, nil
 	} else {
 		panic("shouldn't happen, break the property of Election Safety")
 	}
@@ -138,7 +141,7 @@ func (n *nodeImpl) recvAppendEntriesAsLeader(internalReq *utils.AppendEntriesInt
 
 // critical section: readwrite the meta-state, protected by the stateRWLock
 // fast, no IO
-func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInternalReq) (UnitResult, error) {
+func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInternalReq) (DegradeSignal, error) {
 
 	req := internalReq.Req
 	resp := new(rpc.RequestVoteResponse)
@@ -163,12 +166,12 @@ func (n *nodeImpl) recvRequestVoteAsLeader(internalReq *utils.RequestVoteInterna
 			}
 			resp.Term = n.CurrentTerm
 			resp.VoteGranted = true
-			return UnitResult{ShallDegrade: true}, nil
+			return DegradeSignal{ShallDegrade: true}, nil
 		}
 	}
 
 	// the leader should reject the vote in all other cases
 	resp.Term = n.CurrentTerm
 	resp.VoteGranted = false
-	return UnitResult{ShallDegrade: false}, nil
+	return DegradeSignal{ShallDegrade: false}, nil
 }

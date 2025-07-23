@@ -73,12 +73,9 @@ func NewNode(
 		state:  StateFollower,
 
 		// leader only channels
-		clientCommandCh:       make(chan *utils.ClientCommandInternalReq, bufferSize),
-		leaderApplyCh:         make(chan *utils.ClientCommandInternalReq, bufferSize),
-		noleaderApplySignalCh: make(chan bool, bufferSize),
-
-		requestVoteCh: make(chan *utils.RequestVoteInternalReq, bufferSize),
-		appendEntryCh: make(chan *utils.AppendEntriesInternalReq, bufferSize),
+		clientCommandCh: make(chan *utils.ClientCommandInternalReq, bufferSize),
+		requestVoteCh:   make(chan *utils.RequestVoteInternalReq, bufferSize),
+		appendEntryCh:   make(chan *utils.AppendEntriesInternalReq, bufferSize),
 
 		// persistent state on all servers
 		CurrentTerm: 0, // as the logical clock in Raft to allow detection of stale messages
@@ -129,15 +126,9 @@ type nodeImpl struct {
 	NodeId string // maki: nodeID uuid or number or something else?
 	state  NodeState
 
-	// leader only channels
-	// gracefully clean every time a leader degrades to a follower
-	// reset these 2 data structures everytime a new leader is elected
+	leaderDegradeCh chan DegradeSignal // at least be one slot, so that the sender will not block; and we don't need to buffer more than one signal
 	clientCommandCh chan *utils.ClientCommandInternalReq
 
-	leaderApplyCh         chan *utils.ClientCommandInternalReq
-	noleaderApplySignalCh chan bool
-
-	// shared by all states
 	requestVoteCh chan *utils.RequestVoteInternalReq
 	appendEntryCh chan *utils.AppendEntriesInternalReq
 

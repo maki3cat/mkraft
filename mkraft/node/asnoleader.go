@@ -24,12 +24,8 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 
 	// two workers to apply logs, receive commands
 	workerWaitGroup := sync.WaitGroup{}
-	workerWaitGroup.Add(2)
+	workerWaitGroup.Add(1)
 	workerCtx, workerCancel := context.WithCancel(ctx)
-	// todo: why do I design something like this?
-	// todo: redesign the as no leader
-	n.noleaderApplySignalCh = make(chan bool, n.cfg.GetRaftNodeRequestBufferSize())
-	// go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
 	defer func() {
 		n.logger.Info("exiting the noleader state")
@@ -202,7 +198,6 @@ func (n *nodeImpl) receiveAppendEntriesAsNoLeader(ctx context.Context, req *rpc.
 		// the updateCommitIdx will find the min(leaderCommit, index of last new entry in the log), so the update
 		// doesn't require result of appendLogs
 		n.incrementCommitIdx(uint64(len(req.Entries)), true)
-		n.noleaderApplySignalCh <- true
 	}()
 
 	// 2. update the term
@@ -255,11 +250,6 @@ func (n *nodeImpl) updateLogsAsNoLeader(ctx context.Context, req *rpc.AppendEntr
 	return n.raftLog.UpdateLogsInBatch(ctx, req.PrevLogIndex, logs, req.Term)
 }
 
-// SHARED BY FOLLOWER AND CANDIDATE
-// noleader-WORKER-2 aside from the apply worker-1
-// this worker is forever looping to handle client commands, should be called in a separate goroutine
-// quits on the context done, and set the waitGroup before return
-// maki: the tricky part is that the client command needs NOT to be drained but the apply signal needs to be drained
 func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWaitGroup *sync.WaitGroup) {
 	defer workerWaitGroup.Done()
 	for {
@@ -272,10 +262,7 @@ func (n *nodeImpl) noleaderWorkerForClientCommand(ctx context.Context, workerWai
 			case <-ctx.Done():
 				n.logger.Info("client-command-worker, exiting on context done")
 				return
-			case cmd := <-n.leaderApplyCh:
-				n.logger.Info("client-command-worker, received client command")
-				// todo: add delegation to the leader
-				// easy trivial work, can be done in parallel with the main logic, in case this dirty messages interfere with the main logicj
+			case cmd := <-n.clientCommandCh:
 				cmd.RespChan <- &utils.RPCRespWrapper[*rpc.ClientCommandResponse]{
 					Resp: &rpc.ClientCommandResponse{
 						Result: nil,

@@ -16,16 +16,42 @@ var (
 	appendEntriesBatchSize = 5000
 )
 
+// --------------- pipeline ---------------
+func (n *nodeImpl) runLogReplicaitonPipeline(ctx context.Context) {
+	wg := sync.WaitGroup{}
+
+	// stage 1: append logs
+	stage1OutChan := make(chan struct{}, 1)
+	wg.Add(1)
+	go n.stageAppendLocalLogs(ctx, stage1OutChan, &wg)
+
+	// stage 2: send append entries/heartbeat
+	// though the stage 3 is a short one, stage2 have K-goroutins sharingthe outChan
+	stage2OutChan := make(chan struct{}, signalBuffer)
+	wg.Add(1)
+	go n.stage2AppendEntries(ctx, stage1OutChan, stage2OutChan, &wg)
+
+	stage3OutChan := make(chan struct{}, signalBuffer)
+	wg.Add(1)
+	go n.stage3UpdateCommitIdx(ctx, stage2OutChan, stage3OutChan, &wg)
+
+	stage4OutChan := make(chan struct{}, signalBuffer)
+	wg.Add(1)
+	go n.stage4ApplyLogsAndRespond(ctx, stage3OutChan, stage4OutChan, &wg)
+
+	wg.Wait()
+}
 
 // ------------------- stage 1: append logs -------------------
 // stage 1: append logs
 // in-channel: client commands
 // out-channel: send append entries trigger
-func (n *nodeImpl) stageAppendLocalLogs(ctx context.Context, outChan chan<- struct{}) {
+func (n *nodeImpl) stageAppendLocalLogs(ctx context.Context, outChan chan<- struct{}, wg *sync.WaitGroup) {
 	name := "leader-pipe-s1: appendLocalLogs"
 	n.logger.Info("starting: ", zap.String("step", name))
 	tickerForHeartbeat := time.NewTicker(n.cfg.GetLeaderHeartbeatPeriod())
 	defer tickerForHeartbeat.Stop()
+	defer wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
@@ -67,7 +93,8 @@ func (n *nodeImpl) stageAppendLocalLogs(ctx context.Context, outChan chan<- stru
 
 // --------------- stage2: append entries to peers ---------------
 // stage 2: send append entries to the peers, help peers to catch up with the leader, update nextIdx and matchIdx
-func (n *nodeImpl) stage2AppendEntries(ctx context.Context, inChan <-chan struct{}, outChan chan<- struct{}, degradeChan <-chan struct{}) {
+func (n *nodeImpl) stage2AppendEntries(
+	ctx context.Context, inChan <-chan struct{}, outChan chan<- struct{}, wg *sync.WaitGroup) {
 	broadcast := func(ctx context.Context, inTriggerChan <-chan struct{}, peerChans []chan struct{}) {
 		for {
 			select {
@@ -83,7 +110,7 @@ func (n *nodeImpl) stage2AppendEntries(ctx context.Context, inChan <-chan struct
 			}
 		}
 	}
-	wg := sync.WaitGroup{}
+	peerWg := sync.WaitGroup{}
 	peerIDs, err := n.membership.GetAllPeerNodeIDs()
 	if err != nil {
 		panic(err)
@@ -91,15 +118,17 @@ func (n *nodeImpl) stage2AppendEntries(ctx context.Context, inChan <-chan struct
 	peerTriggerChans := make([]chan struct{}, len(peerIDs))
 	for idx, nodeID := range peerIDs {
 		peerTriggerChans[idx] = make(chan struct{}, 1)
-		wg.Add(1)
-		go n.appendEntriesPeerWorker(ctx, nodeID, &wg, peerTriggerChans[idx], outChan)
+		peerWg.Add(1)
+		go n.appendEntriesPeerWorker(ctx, nodeID, &peerWg, peerTriggerChans[idx], outChan)
 	}
 	go broadcast(ctx, inChan, peerTriggerChans)
 	wg.Wait()
 }
 
 func (n *nodeImpl) appendEntriesPeerWorker(
-	ctx context.Context, nodeID string, wg *sync.WaitGroup, inChan <-chan struct{}, outChan chan<- struct{}) {
+	ctx context.Context,
+	nodeID string, wg *sync.WaitGroup,
+	inChan <-chan struct{}, outChan chan<- struct{}) {
 	n.logger.Debug("appendEntriesPeerWorker starts", zap.String("nodeID", nodeID))
 	defer wg.Done()
 	defer n.logger.Debug("appendEntriesPeerWorker exits", zap.String("nodeID", nodeID))
@@ -131,10 +160,13 @@ func (n *nodeImpl) sendAppendEntriesToPeerLoop(ctx context.Context, nodeID strin
 	n.logger.Debug("sendAppendEntriesToPeerLoop enters", zap.String("nodeID", nodeID))
 	defer n.logger.Debug("sendAppendEntriesToPeerLoop exits", zap.String("nodeID", nodeID))
 	respChan := make(chan *rpc.AppendEntriesResponse, 1)
+	errChan := make(chan error, 1)
 	callPeer := func() {
 		resp, err := n.sendAppendEntriesToPeer(ctx, nodeID)
 		if err != nil {
-			n.logger.Error("send append entries to peer failed", zap.String("nodeID", nodeID), zap.Error(err))
+			n.logger.Error("send append entries to peer returns error", zap.String("nodeID", nodeID), zap.Error(err))
+			errChan <- err
+			return
 		}
 		respChan <- resp
 	}
@@ -143,8 +175,10 @@ func (n *nodeImpl) sendAppendEntriesToPeerLoop(ctx context.Context, nodeID strin
 		select {
 		case <-ctx.Done():
 			return false
+		case <-errChan:
+			return false
 		case resp := <-respChan:
-			if resp == nil { // error or no logs to send
+			if resp == nil { // no logs to send
 				return false
 			}
 			if resp.Success {
@@ -161,7 +195,8 @@ func (n *nodeImpl) sendAppendEntriesToPeerLoop(ctx context.Context, nodeID strin
 // wait for the response from the peer
 // if the response is success, update the nextIdx and matchIdx
 // if the response is not success, decrement the nextIdx and retry
-func (n *nodeImpl) sendAppendEntriesToPeer(ctx context.Context, nodeID string) (resp *rpc.AppendEntriesResponse, err error) {
+func (n *nodeImpl) sendAppendEntriesToPeer(
+	ctx context.Context, nodeID string) (resp *rpc.AppendEntriesResponse, err error) {
 	client, err := n.membership.GetPeerClient(nodeID)
 	if err != nil {
 		return nil, err
@@ -201,34 +236,26 @@ func (n *nodeImpl) sendAppendEntriesToPeer(ctx context.Context, nodeID string) (
 	if resp.Success {
 		n.setPeerIndex(nodeID, nextIdx+uint64(len(logs)), nextIdx+uint64(len(logs))-1)
 	} else {
-		n.setPeerNextIndex(nodeID, nextIdx-uint64(1))
+		if resp.Term > currentTerm {
+			// the peer is in a different term, so we need to degrade to follower
+			// this will stop the whole pipeline
+			n.logger.Warn("peer is in a different term, degrading to follower", zap.String("nodeID", nodeID), zap.Uint32("term", resp.Term))
+			n.leaderDegradeCh <- DegradeSignal{
+				ShallDegrade: true,
+				VotedFor:     n.NodeId,
+				ToTerm:       resp.Term,
+			}
+			return nil, common.ErrStateChangeFromLeaderToFollower
+		} else {
+			n.setPeerNextIndex(nodeID, nextIdx-uint64(1))
+		}
 	}
 	return resp, nil
 }
 
-// --------------- pipeline ---------------
-
-func (n *nodeImpl) startLogReplicaitonPipeline(ctx context.Context) {
-
-	// stage 1: append logs
-	stage1OutChan := make(chan struct{}, 1)
-	go n.stageAppendLocalLogs(ctx, stage1OutChan)
-
-	// stage 2: send append entries/heartbeat
-	// though the stage 3 is a short one, stage2 have K-goroutins sharingthe outChan
-	stage2OutChan := make(chan struct{}, signalBuffer)
-	go n.stage2AppendEntries(ctx, stage1OutChan, stage2OutChan)
-
-	stage3OutChan := make(chan struct{}, signalBuffer)
-	go n.stage3UpdateCommitIdx(ctx, stage2OutChan, stage3OutChan)
-
-	stage4OutChan := make(chan struct{}, signalBuffer)
-	go n.stage4ApplyLogsAndRespond(ctx, stage3OutChan, stage4OutChan)
-
-}
-
 // step3: after matchIdx is updated, update commit idx
-func (n *nodeImpl) stage3UpdateCommitIdx(ctx context.Context, inChan <-chan struct{}, outChan chan<- struct{}) {
+func (n *nodeImpl) stage3UpdateCommitIdx(ctx context.Context, inChan <-chan struct{}, outChan chan<- struct{}, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
@@ -250,7 +277,8 @@ func (n *nodeImpl) stage3UpdateCommitIdx(ctx context.Context, inChan <-chan stru
 }
 
 // step4: with new commit idx, apply the logs to the state machine
-func (n *nodeImpl) stage4ApplyLogsAndRespond(ctx context.Context, inChan <-chan struct{}, outChan chan<- struct{}) {
+func (n *nodeImpl) stage4ApplyLogsAndRespond(ctx context.Context, inChan <-chan struct{}, outChan chan<- struct{}, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
