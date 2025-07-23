@@ -20,19 +20,10 @@ import (
 var _ PeerClient = (*peerClient)(nil)
 
 type PeerClient interface {
-
-	// implementation gap:
-	// currently, the retry logic is simpler for append entries that we retry 3 times
-
-	AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error)
-
-	// no retry
+	AppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error)
 	RequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error)
-
 	GetNodeID() string
-
 	PeerConnCheck(ctx context.Context) bool
-
 	Close() error
 }
 
@@ -71,16 +62,14 @@ func NewPeerClientImpl(
 }
 
 func (rc *peerClient) PeerConnCheck(ctx context.Context) bool {
-	// Wrap the SayHello RPC as a ping
 	_, err := rc.rawClient.SayHello(ctx, &rpc.HelloRequest{Name: "ping"})
 	if err != nil {
 		code := status.Code(err)
 		if code == codes.Unavailable {
 			return false
 		}
-		// For other errors, you may want to log or handle differently,
-		// but for now, treat any error as unhealthy.
-		return false
+		// currently we don't treat other errors as broken conn
+		return true
 	}
 	return true
 }
@@ -102,45 +91,11 @@ func (rc *peerClient) Close() error {
 }
 
 func (rc *peerClient) RequestVote(ctx context.Context, req *rpc.RequestVoteRequest) (*rpc.RequestVoteResponse, error) {
-	resp, err := rc.rawClient.RequestVote(ctx, req)
-	if err != nil {
-		requestID := common.GetRequestID(ctx)
-		rc.logger.Error("single RPC error in rawClient.RequestVote:",
-			zap.Error(err),
-			zap.String("requestID", requestID))
-		return nil, err
-	}
-	return resp, nil
+	return rc.rawClient.RequestVote(ctx, req)
 }
 
-func (rc *peerClient) AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
-	rc.logger.Debug("sending append entries", zap.Any("req", req))
-	const maxRetries = 3
-	var lastErr error
-
-	for i := range maxRetries {
-		resp, err := rc.rawClient.AppendEntries(ctx, req)
-		if err == nil {
-			return resp, nil
-		}
-
-		lastErr = err
-		requestID := common.GetRequestID(ctx)
-		rc.logger.Error("RPC error in AppendEntries, will retry:",
-			zap.Error(err),
-			zap.String("requestID", requestID),
-			zap.Int("attempt", i+1),
-			zap.Int("maxRetries", maxRetries))
-
-		// Check if we should continue retrying
-		select {
-		case <-ctx.Done():
-			return nil, common.ContextDoneErr()
-		default:
-			// Continue to next retry
-		}
-	}
-	return nil, lastErr
+func (rc *peerClient) AppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
+	return rc.rawClient.AppendEntries(ctx, req)
 }
 
 // timeoutClientInterceptor enforces a timeout on RPC calls. This interceptor is used

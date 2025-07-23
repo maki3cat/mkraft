@@ -9,6 +9,22 @@ import (
 	"go.uber.org/zap"
 )
 
+// basic unit: get the nextIdx and a batch of raft logs, send append entries to the peer
+// wait for the response from the peer
+// if the response is success, update the nextIdx and matchIdx
+// if the response is not success, decrement the nextIdx and retry
+func (n *nodeImpl) sendAppendEntriesToPeer(ctx context.Context, nodeID string) error {
+	client, err := n.membership.GetPeerClient(nodeID)
+	if err != nil {
+		return err
+	}
+
+	nextIdx, err := n.raftLog.GetNextIdx(nodeID)
+	if err != nil {
+		return err
+	}
+}
+
 var (
 	pipelineBuffer = 100
 )
@@ -18,7 +34,6 @@ func (n *nodeImpl) startLogReplicaitonPipeline(ctx context.Context) {
 	// stage 1: append logs
 	stage1OutChan := make(chan struct{}, 1)
 	go n.stageAppendLocalLogs(ctx, stage1OutChan)
-
 
 	// stage 2: send append entries/heartbeat
 

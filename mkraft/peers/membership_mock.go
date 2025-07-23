@@ -85,6 +85,21 @@ func (mr *MockMembershipMockRecorder) GetAllPeerNodeIDs() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPeerNodeIDs", reflect.TypeOf((*MockMembership)(nil).GetAllPeerNodeIDs))
 }
 
+// GetPeerClient mocks base method.
+func (m *MockMembership) GetPeerClient(nodeID string) (PeerClient, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPeerClient", nodeID)
+	ret0, _ := ret[0].(PeerClient)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPeerClient indicates an expected call of GetPeerClient.
+func (mr *MockMembershipMockRecorder) GetPeerClient(nodeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPeerClient", reflect.TypeOf((*MockMembership)(nil).GetPeerClient), nodeID)
+}
+
 // GetTotalMemberCount mocks base method.
 func (m *MockMembership) GetTotalMemberCount() int {
 	m.ctrl.T.Helper()

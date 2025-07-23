@@ -27,8 +27,9 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 	workerWaitGroup.Add(2)
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	// todo: why do I design something like this?
+	// todo: redesign the as no leader
 	n.noleaderApplySignalCh = make(chan bool, n.cfg.GetRaftNodeRequestBufferSize())
-	go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
+	// go n.noleaderWorkerToApplyLogs(workerCtx, &workerWaitGroup)
 	go n.noleaderWorkerForClientCommand(workerCtx, &workerWaitGroup)
 	defer func() {
 		n.logger.Info("exiting the noleader state")
