@@ -5,8 +5,8 @@ import (
 	"sync"
 
 	"github.com/maki3cat/mkraft/common"
-	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/mkraft/peers"
+	"github.com/maki3cat/mkraft/mkraft/persister"
 	"github.com/maki3cat/mkraft/mkraft/plugs"
 	"github.com/maki3cat/mkraft/mkraft/utils"
 	"github.com/maki3cat/mkraft/rpc"
@@ -54,7 +54,7 @@ func NewNode(
 	logger *zap.Logger,
 	membership peers.Membership,
 	statemachine plugs.StateMachine,
-	raftLog log.RaftLogs,
+	raftLog persister.RaftLogs,
 	consensus Consensus,
 ) Node {
 	bufferSize := cfg.GetRaftNodeRequestBufferSize()
@@ -115,7 +115,7 @@ type nodeImpl struct {
 	membership peers.Membership // managed by the outside overarching server
 	consensus  Consensus
 
-	raftLog      log.RaftLogs // required, persistent
+	raftLog      persister.RaftLogs // required, persistent
 	cfg          *common.Config
 	logger       *zap.Logger
 	statemachine plugs.StateMachine

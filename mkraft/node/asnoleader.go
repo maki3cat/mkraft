@@ -355,7 +355,6 @@ func (n *nodeImpl) handleElectionResp(resp *MajorityRequestVoteResp) bool {
 		// what if the term is higher
 		if resp.Term == n.CurrentTerm {
 			n.ToLeader(true)
-			n.cleanupApplyLogsBeforeToLeader()
 			n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
 			return true
 		} else if resp.Term > n.CurrentTerm {

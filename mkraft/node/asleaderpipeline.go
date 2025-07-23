@@ -23,9 +23,11 @@ func (n *nodeImpl) sendAppendEntriesToPeer(ctx context.Context, nodeID string) e
 	if err != nil {
 		return err
 	}
-
 	nextIdx := n.getPeersNextIndex(nodeID)
-	logs := n.raftLog.ReadLogsInBatchFromIdx(nextIdx)
+	logs, err := n.raftLog.GetLogs(nextIdx, appendEntriesBatchSize)
+	if err != nil {
+		return err
+	}
 
 }
 

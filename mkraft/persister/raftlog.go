@@ -22,7 +22,9 @@ type RaftLogs interface {
 	// need to handle partial writes failure
 	AppendLogsInBatch(ctx context.Context, commandList [][]byte, term uint32) error
 	UpdateLogsInBatch(ctx context.Context, preLogIndex uint64, commandList [][]byte, term uint32) error
-	ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, error) // the index is included
+
+	ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, error)
+	GetLogs(nextIdx uint64, maxLen int) ([]*RaftLogEntry, error)
 
 	// logIndex starts from 1, so the first log is at index 1
 	GetLastLogIdxAndTerm() (uint64, uint32)
@@ -137,8 +139,7 @@ func (rl *raftLogs) ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, err
 
 // maki: implmentation gap, decide to use all index starting from 0
 // so the initialization of matchIndex is -1, and nextIndex is len(logs)
-func (rl *raftLogs) ReadLogsInBatchFromNextIdxInBatch(nextIdx uint64, maxLen uint64) ([]*RaftLogEntry, error) {
-	rl.logger.Debug("ReadLogsInBatchFromIdx enters", zap.Uint64("nextIdx", nextIdx), zap.Uint64("maxLen", maxLen))
+func (rl *raftLogs) GetLogs(nextIdx uint64, maxLen int) ([]*RaftLogEntry, error) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 	// change from raft log index (from 1) to slice index (from 0)
@@ -149,11 +150,12 @@ func (rl *raftLogs) ReadLogsInBatchFromNextIdxInBatch(nextIdx uint64, maxLen uin
 	if sliceNextIndex == len(rl.logs) {
 		return nil, nil
 	}
+
 	// maki: todo dynamic allocation and copy of large data
 	// low efficiency, not extreme programming
-	logs := make([]*RaftLogEntry, len(rl.logs)-sliceNextIndex)
-	copy(logs, rl.logs[sliceNextIndex:len(rl.logs)])
-	rl.logger.Debug("ReadLogsInBatchFromIdx exits", zap.Int("logsLen", len(logs)))
+	size := min(len(rl.logs)-sliceNextIndex, maxLen)
+	logs := make([]*RaftLogEntry, size)
+	copy(logs, rl.logs[sliceNextIndex:sliceNextIndex+size])
 	return logs, nil
 
 }
