@@ -31,9 +31,12 @@ func (n *nodeImpl) ToLeader(reEntrant bool) error {
 	return nil
 }
 
-func (n *nodeImpl) ToCandidate() error {
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
+func (n *nodeImpl) ChangeStateForElection(reEntrant bool) error {
+	n.logger.Debug("STATE CHANGE: to candidate enters")
+	if !reEntrant {
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
 	term := n.CurrentTerm + 1
 	voteFor := n.NodeId
 	err := n.unsafePersistTermAndVoteFor(term, voteFor)
@@ -45,7 +48,7 @@ func (n *nodeImpl) ToCandidate() error {
 	n.CurrentTerm = term
 	n.VotedFor = voteFor
 	n.tracer.add(n.CurrentTerm, n.NodeId, n.state, n.VotedFor)
-	n.logger.Debug("STATE CHANGE: to candidate exits", zap.Uint32("newTerm", term), zap.String("voteFor", n.NodeId))
+	n.logger.Debug("STATE CHANGE: to candidate exits")
 	return nil
 }
 
@@ -180,6 +183,7 @@ func (n *nodeImpl) unsafePersistTermAndVoteFor(term uint32, voteFor string) erro
 	return nil
 }
 
+// returns: term, state, votedFor
 func (n *nodeImpl) getKeyState() (uint32, NodeState, string) {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()

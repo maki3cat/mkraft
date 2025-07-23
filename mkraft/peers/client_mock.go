@@ -41,19 +41,19 @@ func (m *MockPeerClient) EXPECT() *MockPeerClientMockRecorder {
 	return m.recorder
 }
 
-// AppendEntriesWithRetry mocks base method.
-func (m *MockPeerClient) AppendEntriesWithRetry(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
+// AppendEntries mocks base method.
+func (m *MockPeerClient) AppendEntries(ctx context.Context, req *rpc.AppendEntriesRequest) (*rpc.AppendEntriesResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendEntriesWithRetry", ctx, req)
+	ret := m.ctrl.Call(m, "AppendEntries", ctx, req)
 	ret0, _ := ret[0].(*rpc.AppendEntriesResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// AppendEntriesWithRetry indicates an expected call of AppendEntriesWithRetry.
-func (mr *MockPeerClientMockRecorder) AppendEntriesWithRetry(ctx, req any) *gomock.Call {
+// AppendEntries indicates an expected call of AppendEntries.
+func (mr *MockPeerClientMockRecorder) AppendEntries(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEntriesWithRetry", reflect.TypeOf((*MockPeerClient)(nil).AppendEntriesWithRetry), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendEntries", reflect.TypeOf((*MockPeerClient)(nil).AppendEntries), ctx, req)
 }
 
 // Close mocks base method.

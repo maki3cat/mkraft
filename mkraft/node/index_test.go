@@ -69,7 +69,7 @@ func TestIncrementCommitIdx(t *testing.T) {
 	t.Run("successful increment", func(t *testing.T) {
 		node.commitIndex = 5
 		node.lastApplied = 3
-		err := node.incrementCommitIdx(3)
+		err := node.incrementCommitIdx(3, false)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(8), node.commitIndex)
 	})
@@ -77,7 +77,7 @@ func TestIncrementCommitIdx(t *testing.T) {
 	t.Run("breaks invariant", func(t *testing.T) {
 		node.commitIndex = 3
 		node.lastApplied = 5
-		err := node.incrementCommitIdx(1)
+		err := node.incrementCommitIdx(1, false)
 		assert.ErrorIs(t, err, common.ErrInvariantsBroken)
 	})
 }
@@ -88,7 +88,7 @@ func TestIncrementLastApplied(t *testing.T) {
 	t.Run("successful increment", func(t *testing.T) {
 		node.commitIndex = 10
 		node.lastApplied = 5
-		err := node.incrementLastApplied(2)
+		err := node.incrementLastApplied(2, false)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(7), node.lastApplied)
 	})
@@ -96,7 +96,7 @@ func TestIncrementLastApplied(t *testing.T) {
 	t.Run("breaks invariant", func(t *testing.T) {
 		node.commitIndex = 5
 		node.lastApplied = 3
-		err := node.incrementLastApplied(3)
+		err := node.incrementLastApplied(3, false)
 		assert.ErrorIs(t, err, common.ErrInvariantsBroken)
 	})
 }
@@ -142,15 +142,7 @@ func TestGetPeersNextIndex(t *testing.T) {
 	assert.Equal(t, uint64(10), index)
 
 	// Test new peer
-	index = node.getPeersNextIndex("peer2")
-	assert.Equal(t, uint64(1), index) // Assuming GetLastLogIdx returns 0 for empty log
-}
-
-func TestGetInitDefaultValuesForPeer(t *testing.T) {
-	node, ctrl := newMockNode(t)
-	defer cleanUpTmpDir(ctrl)
-
-	nextIndex, matchIndex := node.getInitDefaultValuesForPeer()
-	assert.Equal(t, uint64(1), nextIndex) // Assuming GetLastLogIdx returns 0 for empty log
-	assert.Equal(t, uint64(0), matchIndex)
+	assert.Panics(t, func() {
+		_ = node.getPeersNextIndex("peer2")
+	})
 }

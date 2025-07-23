@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/maki3cat/mkraft/common"
-	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/mkraft/peers"
+	"github.com/maki3cat/mkraft/mkraft/persister"
 	"github.com/maki3cat/mkraft/mkraft/plugs"
 	gomock "go.uber.org/mock/gomock"
 	"go.uber.org/zap"
@@ -15,7 +15,7 @@ import (
 func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 	ctrl := gomock.NewController(t)
 
-	mockRaftLog := log.NewMockRaftLogs(ctrl)
+	mockRaftLog := persister.NewMockRaftLogs(ctrl)
 	mockRaftLog.EXPECT().GetLastLogIdx().Return(uint64(0)).AnyTimes()
 	mockRaftLog.EXPECT().CheckPreLog(gomock.Any(), gomock.Any()).Return(true).AnyTimes()
 
@@ -29,7 +29,6 @@ func newMockNode(t *testing.T) (*nodeImpl, *gomock.Controller) {
 	membership := peers.NewMockMembership(ctrl)
 	statemachine := plugs.NewMockStateMachine(ctrl)
 	consensus := NewMockConsensus(ctrl)
-	consensus.EXPECT().SetNodeToUpdateOn(gomock.Any()).AnyTimes()
 
 	n := NewNode("1", config, zap.NewNop(), membership, statemachine, mockRaftLog, consensus)
 	node := n.(*nodeImpl)

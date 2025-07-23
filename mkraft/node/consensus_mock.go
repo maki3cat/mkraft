@@ -41,21 +41,6 @@ func (m *MockConsensus) EXPECT() *MockConsensusMockRecorder {
 	return m.recorder
 }
 
-// ConsensusAppendEntries mocks base method.
-func (m *MockConsensus) ConsensusAppendEntries(ctx context.Context, peerReq map[string]*rpc.AppendEntriesRequest, currentTerm uint32) (*AppendEntriesConsensusResp, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ConsensusAppendEntries", ctx, peerReq, currentTerm)
-	ret0, _ := ret[0].(*AppendEntriesConsensusResp)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ConsensusAppendEntries indicates an expected call of ConsensusAppendEntries.
-func (mr *MockConsensusMockRecorder) ConsensusAppendEntries(ctx, peerReq, currentTerm any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsensusAppendEntries", reflect.TypeOf((*MockConsensus)(nil).ConsensusAppendEntries), ctx, peerReq, currentTerm)
-}
-
 // ConsensusRequestVote mocks base method.
 func (m *MockConsensus) ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) *MajorityRequestVoteResp {
 	m.ctrl.T.Helper()
@@ -68,16 +53,4 @@ func (m *MockConsensus) ConsensusRequestVote(ctx context.Context, request *rpc.R
 func (mr *MockConsensusMockRecorder) ConsensusRequestVote(ctx, request any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsensusRequestVote", reflect.TypeOf((*MockConsensus)(nil).ConsensusRequestVote), ctx, request)
-}
-
-// SetNodeToUpdateOn mocks base method.
-func (m *MockConsensus) SetNodeToUpdateOn(node Node) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetNodeToUpdateOn", node)
-}
-
-// SetNodeToUpdateOn indicates an expected call of SetNodeToUpdateOn.
-func (mr *MockConsensusMockRecorder) SetNodeToUpdateOn(node any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNodeToUpdateOn", reflect.TypeOf((*MockConsensus)(nil).SetNodeToUpdateOn), node)
 }

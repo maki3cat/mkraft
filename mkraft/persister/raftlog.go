@@ -1,4 +1,4 @@
-package log
+package persister
 
 import (
 	"bufio"
@@ -14,19 +14,17 @@ import (
 	"go.uber.org/zap"
 )
 
-// IMPLEMENTATION GAP:
-// Since the paper doesn't specify the details of raftlog, my implementation refers to postgres's WAL in some ways.
-// Since I need to do log compaction, while postgres's WAL doesn't, I need to make some new designs for the raftlog.
 var _ RaftLogs = (*raftLogs)(nil)
 
 type RaftLogs interface {
-	// todo: shall change all uint/uint64 to types that really make sense in golang system, consider len(logs) cannot be uint64
 
 	// the raft log iface is designed to be handled in batching from the first place
 	// need to handle partial writes failure
 	AppendLogsInBatch(ctx context.Context, commandList [][]byte, term uint32) error
 	UpdateLogsInBatch(ctx context.Context, preLogIndex uint64, commandList [][]byte, term uint32) error
-	ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, error) // the index is included
+
+	ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, error)
+	GetLogs(nextIdx uint64, maxLen int) ([]*RaftLogEntry, error)
 
 	// logIndex starts from 1, so the first log is at index 1
 	GetLastLogIdxAndTerm() (uint64, uint32)
@@ -139,7 +137,32 @@ func (rl *raftLogs) ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, err
 	return logs, nil
 }
 
-// index starts from 1
+// nextIdx starts from 1, the data-slice index starts from 0
+func (rl *raftLogs) GetLogs(nextIdx uint64, maxLen int) ([]*RaftLogEntry, error) {
+	if nextIdx == 1 {
+		return nil, nil
+	}
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+
+	sliceNextIndex := int(nextIdx) - 1
+	if sliceNextIndex < 0 || sliceNextIndex > len(rl.logs) {
+		return nil, fmt.Errorf("invalid index: %d", nextIdx)
+	}
+	if sliceNextIndex == len(rl.logs) {
+		return nil, nil
+	}
+
+	// maki: todo dynamic allocation and copy of large data
+	// low efficiency, not extreme programming
+	size := min(len(rl.logs)-sliceNextIndex, maxLen)
+	logs := make([]*RaftLogEntry, size)
+	copy(logs, rl.logs[sliceNextIndex:sliceNextIndex+size])
+	return logs, nil
+
+}
+
+// raft log index starts from 1
 func (rl *raftLogs) GetLastLogIdxAndTerm() (uint64, uint32) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()

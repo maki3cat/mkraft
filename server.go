@@ -12,9 +12,9 @@ import (
 
 	"github.com/maki3cat/mkraft/common"
 	"github.com/maki3cat/mkraft/mkraft"
-	"github.com/maki3cat/mkraft/mkraft/log"
 	"github.com/maki3cat/mkraft/mkraft/node"
 	"github.com/maki3cat/mkraft/mkraft/peers"
+	"github.com/maki3cat/mkraft/mkraft/persister"
 	"github.com/maki3cat/mkraft/mkraft/plugs"
 	pb "github.com/maki3cat/mkraft/rpc"
 	"google.golang.org/grpc"
@@ -30,7 +30,7 @@ func NewServer(cfg *common.Config, logger *zap.Logger) (*Server, error) {
 
 	nodeID := cfg.GetMembership().CurrentNodeID
 
-	raftLog := log.NewRaftLogsImplAndLoad(cfg.GetDataDir(), logger, nil)
+	raftLog := persister.NewRaftLogsImplAndLoad(cfg.GetDataDir(), logger, nil)
 	statemachine := plugs.NewStateMachineNoOpImpl()
 
 	consensus := node.NewConsensus(logger, membership)

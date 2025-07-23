@@ -49,8 +49,8 @@ type Membership interface {
 	// member count, and peers may diverge if the membership is dynamic
 	GetTotalMemberCount() int // the cluster size, not just the active ones
 	GetAllPeerClients() ([]PeerClient, error)
-	GetAllPeerClientsV2() (map[string]PeerClient, error)
 	GetAllPeerNodeIDs() ([]string, error)
+	GetPeerClient(nodeID string) (PeerClient, error)
 
 	// start the membership manager
 	Start(ctx context.Context)
@@ -67,7 +67,7 @@ type staticMembership struct {
 }
 
 func (mgr *staticMembership) Start(ctx context.Context) {
-	_, err := mgr.GetAllPeerClientsV2()
+	_, err := mgr.getAllPeerClientsV2()
 	if err != nil {
 		mgr.logger.Error("failed to get initialize all peer clients at start time, will retry later", zap.Error(err))
 	}
@@ -97,7 +97,7 @@ func (mgr *staticMembership) GetAllPeerNodeIDs() ([]string, error) {
 	return peers, nil
 }
 
-func (mgr *staticMembership) getPeerClient(nodeID string) (PeerClient, error) {
+func (mgr *staticMembership) GetPeerClient(nodeID string) (PeerClient, error) {
 	client, ok := mgr.clients.Load(nodeID)
 	if ok {
 		return client.(PeerClient), nil
@@ -126,30 +126,23 @@ func (mgr *staticMembership) GetTotalMemberCount() int {
 }
 
 func (mgr *staticMembership) GetAllPeerClients() ([]PeerClient, error) {
-	membership := mgr.cfg.GetMembership()
-	peers := make([]PeerClient, 0)
-	for _, nodeInfo := range membership.AllMembers {
-		if nodeInfo.NodeID != membership.CurrentNodeID {
-			client, err := mgr.getPeerClient(nodeInfo.NodeID)
-			if err != nil {
-				mgr.logger.Error("failed to create new client", zap.String("nodeID", membership.CurrentNodeID), zap.Error(err))
-				continue
-			}
-			peers = append(peers, client)
-		}
+	clientsMap, err := mgr.getAllPeerClientsV2()
+	if err != nil {
+		return nil, err
 	}
-	if len(peers) == 0 {
-		return peers, errors.New("no peers found without errors")
+	clients := make([]PeerClient, 0, len(clientsMap))
+	for _, client := range clientsMap {
+		clients = append(clients, client)
 	}
-	return peers, nil
+	return clients, nil
 }
 
-func (mgr *staticMembership) GetAllPeerClientsV2() (map[string]PeerClient, error) {
+func (mgr *staticMembership) getAllPeerClientsV2() (map[string]PeerClient, error) {
 	membership := mgr.cfg.GetMembership()
 	peers := make(map[string]PeerClient)
 	for _, nodeInfo := range membership.AllMembers {
 		if nodeInfo.NodeID != membership.CurrentNodeID {
-			client, err := mgr.getPeerClient(nodeInfo.NodeID)
+			client, err := mgr.GetPeerClient(nodeInfo.NodeID)
 			if err != nil {
 				mgr.logger.Error("failed to create new client", zap.String("nodeID", membership.CurrentNodeID), zap.Error(err))
 				continue
@@ -186,7 +179,7 @@ func (mgr *staticMembership) connCheckWorker(ctx context.Context) {
 			mgr.logger.Info("conn check: exits because of context done")
 			return
 		case <-ticker.C:
-			clients, err := mgr.GetAllPeerClientsV2()
+			clients, err := mgr.getAllPeerClientsV2()
 			if err != nil {
 				mgr.logger.Error("conn check: failed to get all peer clients", zap.Error(err))
 				continue

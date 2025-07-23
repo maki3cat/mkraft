@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/maki3cat/mkraft/common"
@@ -72,18 +73,40 @@ func (n *nodeImpl) getCommitIdx() uint64 {
 	return n.commitIndex
 }
 
-// From Paper:
-// • If there exists an N such that N > commitIndex, a majority
-// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
-// implementation gap:
-// we currently wait for every appendEntries to reach consensus, and then update the commitIdx
-// so we don't reply on matchIndex to update the commitIdx
-// not sure this is a good idea, but this design makes the implementation SIMPLE
-// todo: important
-// so we can prove this 1) test cases; 2) comparison with Hashicorp Raft implementation
-func (n *nodeImpl) incrementCommitIdx(numberOfCommand uint64) error {
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
+func (n *nodeImpl) UpdateCommit() bool {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	// sort matchIndex by index value not the key
+	matchIndex := make([]uint64, 0, len(n.matchIndex))
+	for _, idx := range n.matchIndex {
+		matchIndex = append(matchIndex, idx)
+	}
+	sort.Slice(matchIndex, func(i, j int) bool {
+		return matchIndex[i] < matchIndex[j]
+	})
+	idx := len(matchIndex) / 2
+	commitIdx := matchIndex[idx]
+	if commitIdx > n.commitIndex {
+		n.commitIndex = commitIdx
+		// it seems since the commitIdx can be volatile,
+		// and we save only to have better performance,
+		// we don't need ensure the save is successful or not ?
+		// we only need to know if it writes something, it is atomic
+		err := n.unsafeSaveIdx()
+		if err != nil {
+			n.logger.Error("failed to save index, and we continue", zap.Error(err))
+		}
+		return true
+	}
+	return false
+}
+
+func (n *nodeImpl) incrementCommitIdx(numberOfCommand uint64, reEntrant bool) error {
+	if !reEntrant {
+		n.logger.Debug("incrementCommitIdx: lock acquired")
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
 	n.commitIndex = n.commitIndex + numberOfCommand
 	if err := n.unsafeCheckIndexIntegrity(); err != nil {
 		return err
@@ -91,9 +114,12 @@ func (n *nodeImpl) incrementCommitIdx(numberOfCommand uint64) error {
 	return n.unsafeSaveIdx()
 }
 
-func (n *nodeImpl) incrementLastApplied(numberOfCommand uint64) error {
-	n.stateRWLock.Lock()
-	defer n.stateRWLock.Unlock()
+func (n *nodeImpl) incrementLastApplied(numberOfCommand uint64, reEntrant bool) error {
+	if !reEntrant {
+		n.logger.Debug("incrementLastApplied: lock acquired")
+		n.stateRWLock.Lock()
+		defer n.stateRWLock.Unlock()
+	}
 	n.lastApplied = n.lastApplied + numberOfCommand
 	err := n.unsafeCheckIndexIntegrity()
 	if err != nil {
@@ -109,11 +135,8 @@ func (n *nodeImpl) unsafeCheckIndexIntegrity() error {
 	return nil
 }
 
-// section2: for indices of leaders, nextIndex/matchIndex
-// maki: Updating a follower's match/next index is independent of whether consensus is reached.
-// Updating matchIndex/nextIndex is a per-follower operation.
-// Reaching consensus (a majority of nodes having the same entry) is a cluster-wide operation.
 func (n *nodeImpl) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
+	n.logger.Debug("incrPeerIdxAfterLogRepli: lock acquired")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 
@@ -136,6 +159,7 @@ func (n *nodeImpl) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
 // important invariant: matchIndex[follower] ≤ nextIndex[follower] - 1
 // if the matchIndex is less than nextIndex-1, appendEntries will fail and the follower's nextIndex will be decremented
 func (n *nodeImpl) decrPeerIdxAfterLogRepli(nodeID string) {
+	n.logger.Debug("decrPeerIdxAfterLogRepli: lock acquired")
 	n.stateRWLock.Lock()
 	defer n.stateRWLock.Unlock()
 
@@ -157,14 +181,22 @@ func (n *nodeImpl) getPeersNextIndex(nodeID string) uint64 {
 	if index, ok := n.nextIndex[nodeID]; ok {
 		return index
 	} else {
-		n.nextIndex[nodeID], n.matchIndex[nodeID] = n.getInitDefaultValuesForPeer()
-		return n.nextIndex[nodeID]
+		// should initialize the next index to 1 when the leader is elected
+		panic("next index is not found")
 	}
 }
 
-// returns nextIndex, matchIndex
-func (n *nodeImpl) getInitDefaultValuesForPeer() (uint64, uint64) {
-	return n.raftLog.GetLastLogIdx() + 1, 0
+func (n *nodeImpl) setPeerNextIndex(nodeID string, nextIndex uint64) {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	n.nextIndex[nodeID] = nextIndex
+}
+
+func (n *nodeImpl) setPeerIndex(nodeID string, nextIndex uint64, matchIndex uint64) {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	n.nextIndex[nodeID] = nextIndex
+	n.matchIndex[nodeID] = matchIndex
 }
 
 func (n *nodeImpl) IncrPeerIdx(nodeID string, idx uint64) {
@@ -173,4 +205,15 @@ func (n *nodeImpl) IncrPeerIdx(nodeID string, idx uint64) {
 
 func (n *nodeImpl) DecrPeerIdx(nodeID string) {
 	n.decrPeerIdxAfterLogRepli(nodeID)
+}
+
+func (n *nodeImpl) initPeerIndex(nodeIDs []string) {
+	n.stateRWLock.Lock()
+	defer n.stateRWLock.Unlock()
+	n.nextIndex = make(map[string]uint64)
+	n.matchIndex = make(map[string]uint64)
+	for _, nodeID := range nodeIDs {
+		n.nextIndex[nodeID] = n.raftLog.GetLastLogIdx() + 1
+		n.matchIndex[nodeID] = 0
+	}
 }
