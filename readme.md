@@ -22,13 +22,14 @@ It has a lot of work, and I'm happy to receive "donations" in the form of a :sta
 
 ## What this Project is About
 
-A Raft implementation to be with a Domain-specific Database:
-- to pivot my career to system engineering;
-- to be built frirst Toy then Industry level;
-- to systematically explores and presents what the **GAPs Paper/Theoretical Modeling and Implementation Modeling/Coding(toy/industry)**;
-- to investigate the **TESTING** for a complicated system project; the torturing moments are all about the testing yet I still feel unconfident;
-- to find some new **INNOVATION** possiblity for this old protocol;
-- **EDUCATION** purpose to help navigate colledge students from small labs to real project; and also show what college students can do;
+Some learning targets while doing
+- system engineering
+- extreme engineering
+- distributed systems: design, develop/reconstructure, testing
+
+Add some nolvelty
+- what if the storage is a "domain"-specic db tuned for the "PA" system?
+- practice with the traditional k-v first;
 
 <!-- <img src="img/logo.jpg" alt="My Image" align="right" width="250"> -->
 

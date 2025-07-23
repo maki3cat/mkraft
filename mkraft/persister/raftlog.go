@@ -14,13 +14,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// IMPLEMENTATION GAP:
-// Since the paper doesn't specify the details of raftlog, my implementation refers to postgres's WAL in some ways.
-// Since I need to do log compaction, while postgres's WAL doesn't, I need to make some new designs for the raftlog.
 var _ RaftLogs = (*raftLogs)(nil)
 
 type RaftLogs interface {
-	// todo: shall change all uint/uint64 to types that really make sense in golang system, consider len(logs) cannot be uint64
 
 	// the raft log iface is designed to be handled in batching from the first place
 	// need to handle partial writes failure
@@ -137,6 +133,29 @@ func (rl *raftLogs) ReadLogsInBatchFromIdx(nextIdx uint64) ([]*RaftLogEntry, err
 	copy(logs, rl.logs[sliceNextIndex:len(rl.logs)])
 	rl.logger.Debug("ReadLogsInBatchFromIdx exits", zap.Int("logsLen", len(logs)))
 	return logs, nil
+}
+
+// maki: implmentation gap, decide to use all index starting from 0
+// so the initialization of matchIndex is -1, and nextIndex is len(logs)
+func (rl *raftLogs) ReadLogsInBatchFromNextIdxInBatch(nextIdx uint64, maxLen uint64) ([]*RaftLogEntry, error) {
+	rl.logger.Debug("ReadLogsInBatchFromIdx enters", zap.Uint64("nextIdx", nextIdx), zap.Uint64("maxLen", maxLen))
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+	// change from raft log index (from 1) to slice index (from 0)
+	sliceNextIndex := int(nextIdx) - 1
+	if sliceNextIndex < 0 || sliceNextIndex > len(rl.logs) {
+		return nil, fmt.Errorf("invalid index: %d", nextIdx)
+	}
+	if sliceNextIndex == len(rl.logs) {
+		return nil, nil
+	}
+	// maki: todo dynamic allocation and copy of large data
+	// low efficiency, not extreme programming
+	logs := make([]*RaftLogEntry, len(rl.logs)-sliceNextIndex)
+	copy(logs, rl.logs[sliceNextIndex:len(rl.logs)])
+	rl.logger.Debug("ReadLogsInBatchFromIdx exits", zap.Int("logsLen", len(logs)))
+	return logs, nil
+
 }
 
 // index starts from 1

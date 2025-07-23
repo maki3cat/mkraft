@@ -115,10 +115,6 @@ func (n *nodeImpl) unsafeCheckIndexIntegrity() error {
 	return nil
 }
 
-// section2: for indices of leaders, nextIndex/matchIndex
-// maki: Updating a follower's match/next index is independent of whether consensus is reached.
-// Updating matchIndex/nextIndex is a per-follower operation.
-// Reaching consensus (a majority of nodes having the same entry) is a cluster-wide operation.
 func (n *nodeImpl) incrPeerIdxAfterLogRepli(nodeID string, logCnt uint64) {
 	n.logger.Debug("incrPeerIdxAfterLogRepli: lock acquired")
 	n.stateRWLock.Lock()
@@ -159,6 +155,8 @@ func (n *nodeImpl) decrPeerIdxAfterLogRepli(nodeID string) {
 	}
 }
 
+// nextIndex start from 1 when the leaders' logs length is zero
+// matchIndex start from 0 when the leaders' logs length is zero
 func (n *nodeImpl) getPeersNextIndex(nodeID string) uint64 {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
