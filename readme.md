@@ -7,7 +7,9 @@ It has a lot of work, and I'm happy to receive "donations" in the form of a :sta
 
 - [Table of Contents](#table-of-contents)
 - [What this Project is About](#what-this-project-is-about)
-- [What I am currently Doing](#what-i-am-currently-doing)
+- [Agenda](#agenda)
+  - [Currently Doing](#currently-doing)
+  - [Backlog](#backlog)
 - [Implementation Models](#implementation-models)
   - [the Key Component](#the-key-component)
   - [the Meta-State Machine](#the-meta-state-machine)
@@ -30,26 +32,44 @@ A Raft implementation to be with a Domain-specific Database:
 
 <!-- <img src="img/logo.jpg" alt="My Image" align="right" width="250"> -->
 
-## What I am currently Doing
 
-(1) **Testing, debugging, refactoring** for the following version:
+## Agenda
+
+### Currently Doing
+
+Refactoring the Leader with a pipeline pattern for clear code structure and better maintenance.
+
 <b> v0.2.0-alpha </b>
-- $5.2 Leader Election
-- $5.3 Log Replication
-- $5.4 Safety
+- $5.2 Leader Election (have tested)
+- $5.3 Log Replication (refactoring)
+- $5.4 Safety (go together with 5.3)
 
 For detailed information on testing, see [docs/testing.md](docs/testing.md). Your feedback on the designs and specific issues described there is highly appreciated.
 
-(2) Reading and Recording
+### Backlog
 
-From Toy to Industry requires knowing the gap, and I am reading others' designs and source code as my daily learning
+(1) finish the "Apply" part
+ - summarize the 2 types storage v.s. raft log;
+ - add a tiny testing purpose statemachine (kv?)
 
-<!-- **currently more from** -->
-<!-- - [tigerbeetle's doc of vsr](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/internals/vsr.md#protocol-ping-replica-replica)
-- [tigerbeetle's src of vsr](https://github.com/tigerbeetle/tigerbeetle/tree/main/src/vsr) -->
-<!-- **in the future, will compare to**
-- [hashicorp's raft](https://github.com/hashicorp/raft) -->
+(2) Testing: testing all basic features of the raft kv db
+- for correctness only
+- for performance
 
+(3) redesign the persister (raft logs) to (refer to tigerbeetle's impl)
+- ringbuffers on the disk with 2 pointers
+- redesign the log structure
+  - the persister is also on batch with checksum?
+  - 2 ringbuffers one for headers one for payload?
+
+(4) add log compaction
+
+(5) Testing: testing all basic features of the raft kv db
+- for correctness only
+- for performance
+- fuzzy testing
+
+(6) advanced features
 
 ## Implementation Models
 
@@ -59,11 +79,6 @@ From Toy to Industry requires knowing the gap, and I am reading others' designs 
   <img src="img/impl_design_v2.jpg" alt="design-v1" align="right">
 </a> -->
 
-<!-- ### the General Arch
-
-<a href="img/impl_design_v1.jpg">
-  <img src="img/impl_design_v1.jpg" alt="design-v1" align="right">
-</a> -->
 
 ### the Meta-State Machine
 
