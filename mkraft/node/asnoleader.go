@@ -69,17 +69,12 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 							zap.Error(response.Err))
 						continue
 					}
-
-					// to trigger reset the election timer, it at least,should not be a error like timeout
-					timeout := n.cfg.GetElectionTimeout()
-					electionTicker.Reset(timeout)
-					n.logger.Debug("[election timeout reset] at handling election response", zap.Duration("timeout", timeout))
-
 					if n.handleElectionResp(response) {
 						n.logger.Info("STATE CHANGE: candidate is upgraded to leader")
 						go n.RunAsLeader(ctx)
 						return
 					}
+
 				// if we separate these from the main loop, we need to test asyncSendElection checks the state
 				case req := <-n.requestVoteCh: // commonRule: handling voteRequest from another candidate
 					if req.IsTimeout.Load() {
@@ -95,23 +90,26 @@ func (n *nodeImpl) RunAsNoLeader(ctx context.Context) {
 						Resp: resp,
 						Err:  nil,
 					}
+					// if resp success we rest the election timer
+					if resp.VoteGranted {
+						electionTicker.Reset(n.cfg.GetElectionTimeout())
+					}
 
 				case req := <-n.appendEntryCh: // commonRule: handling appendEntry from a leader which can be stale or new
 					if req.IsTimeout.Load() {
 						n.logger.Warn("append entry is timeout")
 						continue
 					}
-					timeout := n.cfg.GetElectionTimeout()
-					electionTicker.Reset(timeout)
-					n.logger.Debug("[election timeout reset] at handling append entry", zap.Duration("timeout", timeout))
-
+					// as long as the term is not smaller, we reset the election timer
+					if req.Req.Term >= n.getCurrentTerm() {
+						electionTicker.Reset(n.cfg.GetElectionTimeout())
+					}
 					resp := n.receiveAppendEntriesAsNoLeader(ctx, req.Req)
-					n.logger.Debug("append entry response", zap.Any("resp", resp))
 					req.RespChan <- &utils.RPCRespWrapper[*rpc.AppendEntriesResponse]{
 						Resp: resp,
 						Err:  nil,
 					}
-					n.logger.Debug("append entry response sent")
+					n.logger.Debug("append entry response", zap.Any("resp", resp))
 				}
 			}
 		}

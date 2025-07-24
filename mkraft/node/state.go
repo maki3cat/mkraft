@@ -190,6 +190,12 @@ func (n *nodeImpl) getKeyState() (uint32, NodeState, string) {
 	return n.CurrentTerm, n.state, n.VotedFor
 }
 
+func (n *nodeImpl) getCurrentTerm() uint32 {
+	n.stateRWLock.RLock()
+	defer n.stateRWLock.RUnlock()
+	return n.CurrentTerm
+}
+
 func (n *nodeImpl) getNodeState() NodeState {
 	n.stateRWLock.RLock()
 	defer n.stateRWLock.RUnlock()
