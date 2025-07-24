@@ -1,7 +1,14 @@
 
 
+motto: testing, debugging are harder than implementation of this system
 
-## TESTING
+## Learning and Principles
+- so far, the more "panics" the better for errors not clear how to handle, for broken invariants;
+  if the process stops, it is easy to debug and find solutions;
+
+
+
+## TESTING Cases and Operations
 
 About Leader Election
 
