@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"github.com/maki3cat/mkraft/common"
@@ -21,6 +22,8 @@ type MajorityRequestVoteResp struct {
 	VoteGranted              bool
 	PeerNodeIDWithHigherTerm string // critical if the term is won by a node with a higher term
 	Err                      error
+	// the node ids that have already voted
+	savedVotedNodeID []string
 }
 
 func NewConsensus(logger *zap.Logger, membership peers.Membership) Consensus {
@@ -53,6 +56,7 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 	if !common.HasDeadline(ctx) {
 		panic("consensus context should have a deadline")
 	}
+	peerNodeIDsWithVote := make([]string, 0)
 
 	for {
 		// Check if context is already done before starting a round
@@ -64,10 +68,12 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 		default:
 		}
 
-		res := c.requestVoteOnce(ctx, req)
+		res := c.requestVoteOnce(ctx, req, peerNodeIDsWithVote)
+		peerNodeIDsWithVote = append(peerNodeIDsWithVote, res.savedVotedNodeID...)
 		if res.Err != nil {
 			c.logger.Error("request vote round failed",
 				zap.Error(res.Err),
+				zap.Int("current count of peerNodeIDsWithVote", len(peerNodeIDsWithVote)),
 				zap.String("requestID", common.GetRequestID(ctx)))
 			// Retry on error, but respect context cancellation
 			continue
@@ -76,10 +82,12 @@ func (c *consensus) ConsensusRequestVote(ctx context.Context, req *rpc.RequestVo
 	}
 }
 
+// todo: refinement, we should save the vote gathered last time,
+// and only send the vote to the peers that have not voted yet
 // send one rpc to all the peers and wait for the rpc timeout to calculate the result
 // @return: handle ErrMembershipErr, ErrMajorityNotMet
 // all rpc are timeoutbounded out of the box, so the function takes as long as the rpc timeout
-func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteRequest) *MajorityRequestVoteResp {
+func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteRequest, savedVotedNodeID []string) *MajorityRequestVoteResp {
 
 	// CHECK MEMBERSHIP
 	requestID := common.GetRequestID(ctx)
@@ -115,18 +123,24 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 	fanInChan := make(chan *utils.RPCRespWrapper[*rpc.RequestVoteResponse], peersCount) // buffered with len(members) to prevent goroutine leak
 	fanInChanDone := make(chan struct{})
 	wg := sync.WaitGroup{}
+	peerVoteAccumulated := 0 // the node itself is counted as a vote
 	for _, pc := range peerClients {
+		if slices.Contains(savedVotedNodeID, pc.GetNodeID()) {
+			peerVoteAccumulated++
+			continue // skip the peer that has already voted
+		}
 		c := pc
 		wg.Add(1) // add cannot be concurrently with wait, so we cannot move it into another goroutine
 		go fanOutFunc(c, fanInChan, &wg)
 	}
+
+	// here we start a goroutine to wait only because we also need to wait on the context done
+	// and the wg doesn't support the select statement
 	go func() {
 		wg.Wait()
 		close(fanInChan)
 		close(fanInChanDone)
 	}()
-
-	// wait until the fan-in is done or the context is done
 	select {
 	case <-ctx.Done():
 		return &MajorityRequestVoteResp{
@@ -150,14 +164,9 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 		}
 	}
 	close(correctRes)
-	if c.calculateIfAlreadyFail(total, peersCount, 0, voteFailed) {
-		return &MajorityRequestVoteResp{
-			Err: common.ErrMajorityNotMet,
-		}
-	}
 
-	// analyze the responses
-	peerVoteAccumulated := 0 // the node itself is counted as a vote
+	// analyze the responses, these are fast operations
+	// we don't need to short-circuit return
 	for wrappedRes := range correctRes {
 		resp := wrappedRes.Resp
 		if resp.Term > req.Term {
@@ -167,9 +176,9 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 				PeerNodeIDWithHigherTerm: wrappedRes.PeerNodeID,
 			}
 		}
-		// equal case
 		if resp.VoteGranted {
 			peerVoteAccumulated++
+			savedVotedNodeID = append(savedVotedNodeID, wrappedRes.PeerNodeID)
 		} else {
 			voteFailed++ // probably the current node has not the latest commit index
 			c.logger.Warn("current node probablyhas not the latest commit index, so it fails to get the vote from a peer",
@@ -178,12 +187,14 @@ func (c *consensus) requestVoteOnce(ctx context.Context, req *rpc.RequestVoteReq
 	}
 	if c.calculateIfMajorityMet(total, peerVoteAccumulated) {
 		return &MajorityRequestVoteResp{
-			Term:        req.Term,
-			VoteGranted: true,
+			Term:             req.Term,
+			VoteGranted:      true,
+			savedVotedNodeID: savedVotedNodeID,
 		}
 	} else {
 		return &MajorityRequestVoteResp{
-			Err: common.ErrMajorityNotMet,
+			Err:              common.ErrMajorityNotMet,
+			savedVotedNodeID: savedVotedNodeID,
 		}
 	}
 }

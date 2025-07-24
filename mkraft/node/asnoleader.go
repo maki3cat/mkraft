@@ -298,11 +298,11 @@ func (n *nodeImpl) asyncSendElection(ctx context.Context, timeout time.Duration)
 		return consensusChan
 	}
 
-	go func(term uint32) {
+	go func(currentTerm uint32) {
 		ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		req := &rpc.RequestVoteRequest{
-			Term:        term,
+			Term:        currentTerm,
 			CandidateId: n.NodeId,
 			// todo: get the last log index and term from the raft log
 			// LastLogIndex: n.raftLog.GetLastLogIndex(),
