@@ -12,6 +12,7 @@
     - [Current Key Use-cases](#current-key-use-cases)
     - [Testing and Verification](#testing-and-verification)
   - [Code Structure](#code-structure)
+    - [from MIT-Moris](#from-mit-moris)
 
 
 
@@ -58,4 +59,35 @@ Exhaust the definition of invariants, and verifiy the invariants defined using t
 
 ## Code Structure
 
+
+
+
+### from MIT-Moris
+
+Original words are from here, 
 http://nil.csail.mit.edu/6.824/2022/labs/raft-structure.txt
+and I have put the lines here
+that are important and not out-of-dated in new Golang Versions go1.24.
+
+A Raft instance has to deal with **the arrival of external events**
+(Start() calls, AppendEntries and RequestVote RPCs, and RPC replies),
+and it has to execute **periodic/time-driven tasks (elections and heart-beats)**.
+There are **many ways to structure** your Raft code to manage these
+activities; this document outlines a few ideas.
+
+- Each Raft instance has a bunch of state (the log, the current index,
+&c) which must be updated in response to events arising in concurrent
+goroutines. Experience suggests that for Raft
+it is most straightforward to use **shared data and locks**.
+
+- You'll want to have a separate **long-running goroutine** that sends
+committed log entries in order on the applyCh. It must be **separate**,
+since sending on the applyCh **can block**; 
+   - and it must be **a single goroutine**, since otherwise it may be hard to ensure that you send log
+entries in **log order**. 
+   - The code that advances **commitIndex will need to
+kick the apply goroutine; it's probably easiest to use a condition
+variable (Go's sync.Cond) for this** (wait for sth can be chan or cond)
+
+- Each RPC should probably be sent (and its reply processed) in its own
+goroutine, for two reasons: so that unreachable peers don't delay the collection of a majority of replies; so that the heartbeat and election timers can continue to tick at all times. It's easiest to do the RPC reply processing in the same goroutine, rather than sending reply information over a channel;

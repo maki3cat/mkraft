@@ -17,6 +17,7 @@ type Consensus interface {
 	// synchronous call, returns when the a consensus is reached or ctx timeout
 	ConsensusRequestVote(ctx context.Context, request *rpc.RequestVoteRequest) *MajorityRequestVoteResp
 }
+
 type MajorityRequestVoteResp struct {
 	Term                     uint32
 	VoteGranted              bool
